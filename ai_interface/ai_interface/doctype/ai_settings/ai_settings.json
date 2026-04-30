@@ -1,0 +1,91 @@
+{
+  "actions": [],
+  "creation": "2026-05-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "default_provider",
+    "default_model",
+    "column_break_1",
+    "api_call_timeout",
+    "max_output_tokens",
+    "section_vision",
+    "max_pdf_pages",
+    "section_logging",
+    "enable_logging"
+  ],
+  "fields": [
+    {
+      "fieldname": "default_provider",
+      "fieldtype": "Link",
+      "label": "Default Provider",
+      "options": "AI Provider",
+      "reqd": 1
+    },
+    {
+      "fieldname": "default_model",
+      "fieldtype": "Data",
+      "label": "Default Model",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "120",
+      "fieldname": "api_call_timeout",
+      "fieldtype": "Int",
+      "label": "API Call Timeout (seconds)"
+    },
+    {
+      "default": "4096",
+      "fieldname": "max_output_tokens",
+      "fieldtype": "Int",
+      "label": "Max Output Tokens"
+    },
+    {
+      "fieldname": "section_vision",
+      "fieldtype": "Section Break",
+      "label": "Vision Settings"
+    },
+    {
+      "default": "10",
+      "fieldname": "max_pdf_pages",
+      "fieldtype": "Int",
+      "label": "Max PDF Pages"
+    },
+    {
+      "fieldname": "section_logging",
+      "fieldtype": "Section Break",
+      "label": "Logging"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_logging",
+      "fieldtype": "Check",
+      "label": "Enable Call Logging"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "issingle": 1,
+  "links": [],
+  "modified": "2026-05-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
+}

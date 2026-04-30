@@ -1,0 +1,118 @@
+{
+  "actions": [],
+  "autoname": "field:provider_name",
+  "creation": "2026-05-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "provider_name",
+    "provider_type",
+    "enabled",
+    "column_break_1",
+    "auth_type",
+    "api_key",
+    "auth_token",
+    "api_base_url",
+    "section_models",
+    "fetch_models_button",
+    "models"
+  ],
+  "fields": [
+    {
+      "fieldname": "provider_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Provider Name",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "provider_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Provider Type",
+      "options": "Claude Code\nAnthropic\nOpenAI\nGoogle\nCustom",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "API Key",
+      "fieldname": "auth_type",
+      "fieldtype": "Select",
+      "label": "Auth Type",
+      "options": "API Key\nAuth Token",
+      "depends_on": "eval:doc.provider_type!='Claude Code'",
+      "mandatory_depends_on": "eval:doc.provider_type!='Claude Code'"
+    },
+    {
+      "depends_on": "eval:doc.auth_type=='API Key' && doc.provider_type!='Claude Code'",
+      "fieldname": "api_key",
+      "fieldtype": "Password",
+      "label": "API Key",
+      "mandatory_depends_on": "eval:doc.auth_type=='API Key' && doc.provider_type!='Claude Code'",
+      "description": "sk-ant-api03-* from console.anthropic.com"
+    },
+    {
+      "depends_on": "eval:doc.auth_type=='Auth Token' && doc.provider_type!='Claude Code'",
+      "fieldname": "auth_token",
+      "fieldtype": "Password",
+      "label": "Auth Token",
+      "mandatory_depends_on": "eval:doc.auth_type=='Auth Token' && doc.provider_type!='Claude Code'",
+      "description": "sk-ant-oat01-* from claude setup-token"
+    },
+    {
+      "fieldname": "api_base_url",
+      "fieldtype": "Data",
+      "description": "Leave blank for default. Use for proxies or Azure endpoints.",
+      "label": "API Base URL"
+    },
+    {
+      "fieldname": "section_models",
+      "fieldtype": "Section Break",
+      "label": "Available Models"
+    },
+    {
+      "fieldname": "fetch_models_button",
+      "fieldtype": "Button",
+      "label": "Fetch Models"
+    },
+    {
+      "fieldname": "models",
+      "fieldtype": "Table",
+      "label": "Models",
+      "options": "AI Provider Model",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-05-01 00:00:03.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Provider",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

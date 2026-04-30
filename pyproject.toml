@@ -9,6 +9,9 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=15.0.0" # Installed and managed by bench.
+    "anthropic>=0.40.0",
+    "pdf2image>=1.16.0",
+    "Pillow>=10.0.0",
 ]
 
 [build-system]
@@ -21,7 +24,7 @@ build-backend = "flit_core.buildapi"
 
 # These apt dependencies will be installed from Ubuntu repositories when you host your app on Frappe Cloud
 [deploy.dependencies.apt]
-packages = []
+packages = ["poppler-utils"]
 
 [tool.ruff]
 line-length = 110
