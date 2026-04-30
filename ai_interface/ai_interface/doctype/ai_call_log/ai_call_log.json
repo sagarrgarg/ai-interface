@@ -1,0 +1,188 @@
+{
+  "actions": [],
+  "autoname": "hash",
+  "creation": "2026-05-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "status",
+    "function_type",
+    "calling_app",
+    "column_break_1",
+    "provider",
+    "model",
+    "prompt_template",
+    "is_sync",
+    "section_request",
+    "input_text",
+    "section_response",
+    "output_text",
+    "error_message",
+    "section_metrics",
+    "input_tokens",
+    "output_tokens",
+    "column_break_metrics",
+    "cost",
+    "latency_ms",
+    "section_audit",
+    "user"
+  ],
+  "fields": [
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Queued\nRunning\nCompleted\nFailed",
+      "read_only": 1
+    },
+    {
+      "fieldname": "function_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Function Type",
+      "options": "Generation\nVision\nQuery",
+      "read_only": 1
+    },
+    {
+      "fieldname": "calling_app",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Calling App",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "provider",
+      "fieldtype": "Link",
+      "label": "Provider",
+      "options": "AI Provider",
+      "read_only": 1
+    },
+    {
+      "fieldname": "model",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Model",
+      "read_only": 1
+    },
+    {
+      "fieldname": "prompt_template",
+      "fieldtype": "Link",
+      "label": "Prompt Template",
+      "options": "AI Prompt Template",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "is_sync",
+      "fieldtype": "Check",
+      "label": "Sync Call",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_request",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "label": "Request"
+    },
+    {
+      "fieldname": "input_text",
+      "fieldtype": "Long Text",
+      "label": "Input Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_response",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "label": "Response"
+    },
+    {
+      "fieldname": "output_text",
+      "fieldtype": "Long Text",
+      "label": "Output Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "error_message",
+      "fieldtype": "Long Text",
+      "label": "Error Message",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_metrics",
+      "fieldtype": "Section Break",
+      "label": "Metrics"
+    },
+    {
+      "default": "0",
+      "fieldname": "input_tokens",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Input Tokens",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "output_tokens",
+      "fieldtype": "Int",
+      "label": "Output Tokens",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_metrics",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "0",
+      "fieldname": "cost",
+      "fieldtype": "Currency",
+      "label": "Cost",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "latency_ms",
+      "fieldtype": "Int",
+      "label": "Latency (ms)",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_audit",
+      "fieldtype": "Section Break",
+      "label": "Audit"
+    },
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "label": "User",
+      "options": "User",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-05-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Call Log",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
+}

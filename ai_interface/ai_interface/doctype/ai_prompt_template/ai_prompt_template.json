@@ -1,0 +1,98 @@
+{
+  "actions": [],
+  "autoname": "field:template_name",
+  "creation": "2026-05-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "template_name",
+    "category",
+    "column_break_1",
+    "model_override",
+    "provider_override",
+    "section_template",
+    "body",
+    "section_meta",
+    "variables"
+  ],
+  "fields": [
+    {
+      "fieldname": "template_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Template Name",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "category",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Category",
+      "options": "Generation\nVision\nQuery\nSystem",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "model_override",
+      "fieldtype": "Data",
+      "description": "Force a specific model for this template. Leave blank to use default.",
+      "label": "Model Override"
+    },
+    {
+      "fieldname": "provider_override",
+      "fieldtype": "Link",
+      "description": "Force a specific provider for this template. Leave blank to use default.",
+      "label": "Provider Override",
+      "options": "AI Provider"
+    },
+    {
+      "fieldname": "section_template",
+      "fieldtype": "Section Break",
+      "label": "Template"
+    },
+    {
+      "fieldname": "body",
+      "fieldtype": "Code",
+      "label": "Body",
+      "options": "Jinja",
+      "reqd": 1
+    },
+    {
+      "fieldname": "section_meta",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "label": "Metadata"
+    },
+    {
+      "fieldname": "variables",
+      "fieldtype": "Small Text",
+      "description": "JSON list of expected variable names, e.g. [\"customer_name\", \"order_id\"]",
+      "label": "Variables"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-05-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Prompt Template",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}
