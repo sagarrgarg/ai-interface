@@ -4,6 +4,8 @@ import anthropic
 
 from ai_interface.providers.base import BaseProvider, ProviderResponse
 
+CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
+
 ANTHROPIC_MODELS = [
 	{
 		"model_id": "claude-opus-4-20250514",
@@ -49,6 +51,8 @@ class AnthropicProvider(BaseProvider):
 				system_msg = msg["content"]
 			else:
 				chat_messages.append(msg)
+
+		system_msg = self._prepare_system(system_msg, auth_type)
 
 		kwargs: dict = {
 			"model": model,
@@ -110,6 +114,8 @@ class AnthropicProvider(BaseProvider):
 			}
 		]
 
+		system_msg = self._prepare_system(system_msg, auth_type)
+
 		kwargs: dict = {
 			"model": model,
 			"max_tokens": max_tokens,
@@ -159,12 +165,26 @@ class AnthropicProvider(BaseProvider):
 		self, credential: str, auth_type: str, api_base_url: str, timeout: int
 	) -> anthropic.Anthropic:
 		if auth_type == "Auth Token":
-			kwargs: dict = {"auth_token": credential, "timeout": timeout}
+			kwargs: dict = {
+				"auth_token": credential,
+				"timeout": timeout,
+				"default_headers": {"anthropic-beta": "oauth-2025-04-20"},
+			}
 		else:
 			kwargs: dict = {"api_key": credential, "timeout": timeout}
 		if api_base_url:
 			kwargs["base_url"] = api_base_url
 		return anthropic.Anthropic(**kwargs)
+
+	def _prepare_system(self, system_msg: str | None, auth_type: str) -> str | None:
+		"""OAuth tokens require the Claude Code identifier as the system prompt prefix."""
+		if auth_type != "Auth Token":
+			return system_msg
+		if not system_msg:
+			return CLAUDE_CODE_SYSTEM_PREFIX
+		if system_msg.startswith(CLAUDE_CODE_SYSTEM_PREFIX):
+			return system_msg
+		return f"{CLAUDE_CODE_SYSTEM_PREFIX}\n\n{system_msg}"
 
 	def _detect_media_type(self, img_bytes: bytes) -> str:
 		if img_bytes[:8] == b"\x89PNG\r\n\x1a\n":

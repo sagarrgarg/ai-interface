@@ -1,9 +1,11 @@
 {
   "actions": [],
   "creation": "2026-05-01 00:00:00.000000",
+  "description": "Global AI behavior for this site. Sets which provider and model run by default, how long calls can take, and whether every call is logged. Per-call overrides in consumer apps always win over these defaults.",
   "doctype": "DocType",
   "engine": "InnoDB",
   "field_order": [
+    "intro_html",
     "default_provider",
     "default_model",
     "column_break_1",
@@ -16,17 +18,24 @@
   ],
   "fields": [
     {
+      "fieldname": "intro_html",
+      "fieldtype": "HTML",
+      "options": "<div class=\"alert alert-info\" style=\"margin-bottom:15px\"><b>How this works.</b> Consumer apps (Excom, DocPulse, BNS, etc.) call <code>generate()</code>, <code>extract()</code>, or <code>query()</code> without naming a provider. The dispatcher resolves: <b>caller override → template override → these defaults</b>. Set sensible defaults here once; consumers stay provider-agnostic.<br><br><b>Quick recommended setup:</b><br>1. Create an <b>AI Provider</b> (Claude Code for Pro plan, or Anthropic with an API key)<br>2. Click <b>Fetch Models</b> in the provider doc<br>3. Set <b>Default Provider</b> + <b>Default Model</b> below<br>4. Leave timeouts/tokens at defaults unless you have a reason to change<br>5. Keep <b>Enable Logging</b> on — needed for cost tracking and async result delivery</div>"
+    },
+    {
       "fieldname": "default_provider",
       "fieldtype": "Link",
       "label": "Default Provider",
       "options": "AI Provider",
-      "reqd": 1
+      "reqd": 1,
+      "description": "Which AI Provider runs calls when the consumer app doesn't specify one. Pick the cheapest provider that meets your latency + capability needs. For Claude Pro/Max subscribers: use a provider with type 'Anthropic' + Auth Token (OAuth) — fastest path. For pay-as-you-go: 'Anthropic' + API Key. For zero-config local routing: 'Claude Code' (shells out to CLI, slower)."
     },
     {
       "fieldname": "default_model",
       "fieldtype": "Data",
       "label": "Default Model",
-      "reqd": 1
+      "reqd": 1,
+      "description": "Model ID from the provider's catalog (e.g. claude-sonnet-4-5, claude-opus-4-7, claude-haiku-4-5). Sonnet = balanced default (good quality, ~$3/M input). Opus = highest quality, ~5x cost. Haiku = cheapest + fastest, use for high-volume low-stakes calls (vision OCR, classification). Must match a model_id listed inside the chosen Default Provider."
     },
     {
       "fieldname": "column_break_1",
@@ -36,13 +45,15 @@
       "default": "120",
       "fieldname": "api_call_timeout",
       "fieldtype": "Int",
-      "label": "API Call Timeout (seconds)"
+      "label": "API Call Timeout (seconds)",
+      "description": "Max seconds to wait for the provider to respond before raising. 120s suits most generation tasks. Raise to 300s for long vision/PDF extractions (many pages) or large query results. Lower (30-60s) if you're calling synchronously from a user-facing flow where waiting is bad UX."
     },
     {
       "default": "4096",
       "fieldname": "max_output_tokens",
       "fieldtype": "Int",
-      "label": "Max Output Tokens"
+      "label": "Max Output Tokens",
+      "description": "Ceiling on response length per call. 4096 is safe for emails, summaries, query answers. Raise to 8192-16000 for long-form generation (reports, drafts). Higher = more cost per call. Anthropic Sonnet 4.x supports up to 64000 output tokens; Opus up to 32000. Caller can override per-call via the max_tokens parameter."
     },
     {
       "fieldname": "section_vision",
@@ -53,7 +64,8 @@
       "default": "10",
       "fieldname": "max_pdf_pages",
       "fieldtype": "Int",
-      "label": "Max PDF Pages"
+      "label": "Max PDF Pages",
+      "description": "When extract() is called on a PDF, this many pages are rasterized to images and sent to the vision model. Each image adds ~1500 input tokens. 10 pages covers most invoices, POs, lab reports. Raise to 30-50 for full contracts; cost grows linearly. Set to 1-3 to force consumers to be deliberate about which page they're extracting."
     },
     {
       "fieldname": "section_logging",
@@ -64,13 +76,14 @@
       "default": "1",
       "fieldname": "enable_logging",
       "fieldtype": "Check",
-      "label": "Enable Call Logging"
+      "label": "Enable Call Logging",
+      "description": "When ON: every call writes an AI Call Log row (prompt, response, tokens, cost, latency, status). Required for async delivery — consumers poll the log by name. Required for cost auditing. Required for debugging failures. Turn OFF only if you have a strict data-retention rule against storing prompts/responses. Logs auto-clear after 90 days (see hooks.py default_log_clearing_doctypes)."
     }
   ],
   "index_web_pages_for_search": 0,
   "issingle": 1,
   "links": [],
-  "modified": "2026-05-01 00:00:00.000000",
+  "modified": "2026-05-15 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Ai Interface",
   "name": "AI Settings",
