@@ -31,7 +31,7 @@
       "fieldtype": "Select",
       "in_list_view": 1,
       "label": "Provider Type",
-      "options": "Claude Code\nAnthropic\nOpenAI\nGoogle\nCustom",
+      "options": "Claude Code\nAnthropic",
       "reqd": 1
     },
     {
