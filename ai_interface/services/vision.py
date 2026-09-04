@@ -15,6 +15,10 @@ def extract(
 	calling_app: str = "",
 	sync: bool = False,
 	max_tokens: int | None = None,
+	reference_doctype: str | None = None,
+	reference_name: str | None = None,
+	module: str | None = None,
+	action: str | None = None,
 	**kwargs,
 ) -> str:
 	"""Extract information from an image or PDF using vision.
@@ -34,6 +38,10 @@ def extract(
 			function_type="Vision",
 			sync=sync,
 			max_tokens=max_tokens,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+			module=module,
+			action=action,
 			**kwargs,
 		)
 	finally:

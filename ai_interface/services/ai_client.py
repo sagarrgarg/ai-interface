@@ -23,11 +23,19 @@ def call_ai(
 	user: str | None = None,
 	max_tokens: int | None = None,
 	temperature: float = 0.7,
+	reference_doctype: str | None = None,
+	reference_name: str | None = None,
+	module: str | None = None,
+	action: str | None = None,
 ) -> str:
 	"""Central AI call dispatcher.
 
 	Async (default): Creates AI Call Log, enqueues execution, returns log name.
 	Sync (sync=True): Executes inline, creates log, returns response text directly.
+
+	Attribution (`reference_doctype`, `reference_name`, `module`, `action`) is
+	optional but strongly recommended — it is what powers cost and failure
+	breakdowns in the AI Command Center.
 	"""
 	settings = frappe.get_single("AI Settings")
 	user = user or frappe.session.user
@@ -37,6 +45,9 @@ def call_ai(
 	)
 
 	rendered_prompt = _render_prompt(prompt, template, context)
+
+	if not module and reference_doctype:
+		module = _module_for_doctype(reference_doctype)
 
 	log = _create_call_log(
 		settings,
@@ -49,6 +60,11 @@ def call_ai(
 		input_text=rendered_prompt,
 		user=user,
 		is_sync=sync,
+		reference_doctype=reference_doctype,
+		reference_name=reference_name,
+		module=module,
+		action=action,
+		currency="USD",
 	)
 
 	if sync:
@@ -142,11 +158,12 @@ def _execute_ai_call(
 
 		latency_ms = int((time.time() - start_time) * 1000)
 		cost = _calculate_cost(provider_doc, model, response.input_tokens, response.output_tokens)
+		retain_payloads = bool(frappe.db.get_single_value("AI Settings", "enable_logging"))
 
 		log.db_set(
 			{
 				"status": "Completed",
-				"output_text": response.content,
+				"output_text": response.content if retain_payloads else "",
 				"input_tokens": response.input_tokens,
 				"output_tokens": response.output_tokens,
 				"cost": cost,
@@ -167,6 +184,7 @@ def _execute_ai_call(
 		log.db_set(
 			{
 				"status": "Failed",
+				"error_type": _classify_error(str(e)),
 				"error_message": f"{e!s}\n\n{traceback.format_exc()}",
 				"latency_ms": latency_ms,
 			}
@@ -228,14 +246,46 @@ def _render_prompt(
 
 
 def _create_call_log(settings, **kwargs):
+	"""Always persist the log row — the call contract returns its name, and the
+	worker reloads it by name. `enable_logging` controls payload *retention*
+	(prompt and response bodies), not whether the row exists.
+	"""
+	if not settings.enable_logging:
+		kwargs["input_text"] = ""
+
 	log = frappe.new_doc("AI Call Log")
 	log.update(kwargs)
-	if settings.enable_logging:
-		log.insert(ignore_permissions=True)
-		frappe.db.commit()
-	else:
-		log.name = frappe.generate_hash(length=10)
+	log.insert(ignore_permissions=True)
+	frappe.db.commit()
 	return log
+
+
+def _module_for_doctype(doctype: str) -> str | None:
+	"""Best-effort module resolution from a doctype name."""
+	try:
+		return frappe.db.get_value("DocType", doctype, "module")
+	except Exception:
+		return None
+
+
+ERROR_PATTERNS = (
+	("Auth", ("authentication", "unauthorized", "401", "invalid api key", "invalid x-api-key", "oauth")),
+	("Rate Limit", ("rate limit", "429", "too many requests", "overloaded", "quota")),
+	("Timeout", ("timeout", "timed out", "deadline")),
+	("Invalid Response", ("json", "could not parse", "unexpected response", "decode")),
+	("Config Error", ("no ai provider", "unknown provider type", "is disabled", "not configured")),
+	("File Error", ("file not found", "access denied", "poppler", "pdf", "no such file")),
+	("Provider Error", ("api error", "provider", "anthropic", "connection", "5xx", "500", "503")),
+)
+
+
+def _classify_error(message: str) -> str:
+	"""Map a raw exception string onto the AI Call Log error_type taxonomy."""
+	haystack = (message or "").lower()
+	for label, needles in ERROR_PATTERNS:
+		if any(n in haystack for n in needles):
+			return label
+	return "Unknown"
 
 
 def _safe_resolve_path(url: str) -> str:

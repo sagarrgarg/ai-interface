@@ -13,6 +13,13 @@
     "model",
     "prompt_template",
     "is_sync",
+    "section_attribution",
+    "module",
+    "reference_doctype",
+    "reference_name",
+    "column_break_attribution",
+    "action",
+    "error_type",
     "section_request",
     "input_text",
     "section_response",
@@ -22,6 +29,7 @@
     "input_tokens",
     "output_tokens",
     "column_break_metrics",
+    "currency",
     "cost",
     "latency_ms",
     "section_audit",
@@ -87,6 +95,53 @@
       "read_only": 1
     },
     {
+      "fieldname": "section_attribution",
+      "fieldtype": "Section Break",
+      "label": "Attribution"
+    },
+    {
+      "fieldname": "module",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Module",
+      "options": "Module Def",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reference_doctype",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Reference DocType",
+      "options": "DocType",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reference_name",
+      "fieldtype": "Dynamic Link",
+      "label": "Reference Name",
+      "options": "reference_doctype",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_attribution",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "action",
+      "fieldtype": "Data",
+      "in_standard_filter": 1,
+      "label": "Action",
+      "read_only": 1
+    },
+    {
+      "fieldname": "error_type",
+      "fieldtype": "Select",
+      "in_standard_filter": 1,
+      "label": "Error Type",
+      "options": "\nAuth\nRate Limit\nTimeout\nInvalid Response\nProvider Error\nConfig Error\nFile Error\nUnknown",
+      "read_only": 1
+    },
+    {
       "fieldname": "section_request",
       "fieldtype": "Section Break",
       "collapsible": 1,
@@ -141,10 +196,21 @@
       "fieldtype": "Column Break"
     },
     {
+      "default": "USD",
+      "description": "Provider token rates are denominated in USD.",
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "label": "Currency",
+      "options": "Currency",
+      "read_only": 1
+    },
+    {
       "default": "0",
       "fieldname": "cost",
       "fieldtype": "Currency",
       "label": "Cost",
+      "options": "currency",
+      "precision": "6",
       "read_only": 1
     },
     {
@@ -179,6 +245,12 @@
       "read": 1,
       "role": "System Manager",
       "write": 1
+    },
+    {
+      "export": 1,
+      "read": 1,
+      "report": 1,
+      "role": "AI Manager"
     }
   ],
   "sort_field": "creation",

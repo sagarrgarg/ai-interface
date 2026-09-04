@@ -15,6 +15,10 @@ def query(
 	calling_app: str = "",
 	sync: bool = False,
 	max_tokens: int | None = None,
+	reference_doctype: str | None = None,
+	reference_name: str | None = None,
+	module: str | None = None,
+	action: str | None = None,
 	**kwargs,
 ) -> str:
 	"""Natural language query against ERPNext data.
@@ -23,11 +27,15 @@ def query(
 	Phase 3: LLM synthesizes the results into a natural language answer.
 	Both internal LLM calls are always synchronous. The sync param controls
 	the final answer delivery only.
+
+	Note: this produces TWO AI Call Log rows per question — one for query
+	generation (action `query_generation`) and one for answer synthesis
+	(action `answer_synthesis`). Both are attributed to `calling_app`.
 	"""
 	user = user or frappe.session.user
 
 	schema_context = _build_schema_context()
-	query_params = _generate_query(question, schema_context, provider, model, user)
+	query_params = _generate_query(question, schema_context, provider, model, user, calling_app)
 	results = _execute_query(query_params, user)
 	answer_prompt = _build_answer_prompt(question, query_params, results)
 
@@ -40,6 +48,10 @@ def query(
 		sync=sync,
 		user=user,
 		max_tokens=max_tokens,
+		reference_doctype=reference_doctype,
+		reference_name=reference_name,
+		module=module,
+		action=action or "answer_synthesis",
 		**kwargs,
 	)
 
@@ -91,6 +103,7 @@ def _generate_query(
 	provider: str | None,
 	model: str | None,
 	user: str,
+	calling_app: str = "",
 ) -> dict:
 	"""Phase 1+2: LLM generates structured query parameters as JSON."""
 	prompt = f"""You are an ERPNext data query assistant. Given a natural language question and the available doctypes/fields, generate query parameters as JSON.
@@ -117,10 +130,11 @@ Generate the JSON query parameters:"""
 		prompt=prompt,
 		provider=provider,
 		model=model,
-		calling_app="ai_interface",
+		calling_app=calling_app or "ai_interface",
 		function_type="Query",
 		sync=True,
 		user=user,
+		action="query_generation",
 	)
 
 	try:
