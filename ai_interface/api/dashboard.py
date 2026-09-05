@@ -76,12 +76,19 @@ def _build_conditions(filters: dict) -> tuple[str, dict]:
 
 
 def _parse_filters(filters) -> dict:
+	"""Always return a fresh dict.
+
+	Several endpoints narrow the filter set (a drill-down parent, a forced
+	status). Returning the caller's own dict let those writes leak into every
+	later call that reused it — which silently scoped whole panels to the last
+	drill-down. Copy defensively.
+	"""
 	if isinstance(filters, str):
 		try:
-			return json.loads(filters) or {}
-		except (json.JSONDecodeError, ValueError):
+			return dict(json.loads(filters) or {})
+		except (json.JSONDecodeError, ValueError, TypeError):
 			return {}
-	return filters or {}
+	return dict(filters) if filters else {}
 
 
 @frappe.whitelist()
