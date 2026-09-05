@@ -1,0 +1,166 @@
+{
+ "actions": [],
+ "autoname": "field:type_name",
+ "creation": "2026-09-05 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "type_name",
+  "enabled",
+  "column_break_1",
+  "adapter_path",
+  "section_endpoint",
+  "default_base_url",
+  "chat_path",
+  "models_path",
+  "column_break_endpoint",
+  "no_credential",
+  "auth_header",
+  "auth_prefix",
+  "default_currency",
+  "section_catalog",
+  "pricing_source_url",
+  "catalog_prefix",
+  "section_wire",
+  "unsupported_params"
+ ],
+ "fields": [
+  {
+   "fieldname": "type_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Type Name",
+   "reqd": 1,
+   "unique": 1,
+   "description": "Vendor name as shown in the AI Provider form, e.g. Sarvam."
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "adapter_path",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Adapter Path",
+   "reqd": 1,
+   "default": "ai_interface.providers.openai_compatible.OpenAICompatibleProvider",
+   "description": "Dotted path to a BaseProvider subclass. Leave the default for any vendor that speaks the OpenAI chat-completions format."
+  },
+  {
+   "fieldname": "section_endpoint",
+   "fieldtype": "Section Break",
+   "label": "Endpoint"
+  },
+  {
+   "fieldname": "default_base_url",
+   "fieldtype": "Data",
+   "label": "Default Base URL",
+   "description": "e.g. https://api.sarvam.ai \u2014 an AI Provider may override this."
+  },
+  {
+   "fieldname": "chat_path",
+   "fieldtype": "Data",
+   "label": "Chat Completions Path",
+   "default": "/v1/chat/completions"
+  },
+  {
+   "fieldname": "models_path",
+   "fieldtype": "Data",
+   "label": "Models Path",
+   "description": "Leave blank if the vendor has no model-listing endpoint; models are then entered by hand."
+  },
+  {
+   "fieldname": "column_break_endpoint",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "no_credential",
+   "fieldtype": "Check",
+   "label": "No Credential Required",
+   "description": "Adapter authenticates itself (a local CLI or an unauthenticated endpoint). Hides the key fields on the AI Provider."
+  },
+  {
+   "fieldname": "auth_header",
+   "fieldtype": "Data",
+   "label": "Auth Header",
+   "default": "Authorization",
+   "description": "Header carrying the credential. Sarvam also accepts api-subscription-key."
+  },
+  {
+   "fieldname": "auth_prefix",
+   "fieldtype": "Data",
+   "label": "Auth Prefix",
+   "default": "Bearer ",
+   "description": "Prepended to the credential. Blank for raw-key headers."
+  },
+  {
+   "fieldname": "default_currency",
+   "fieldtype": "Link",
+   "label": "Default Billing Currency",
+   "options": "Currency",
+   "default": "USD",
+   "description": "Currency the vendor prices in. Sarvam bills in INR."
+  },
+  {
+   "fieldname": "section_catalog",
+   "fieldtype": "Section Break",
+   "label": "Model Catalog"
+  },
+  {
+   "fieldname": "pricing_source_url",
+   "fieldtype": "Data",
+   "label": "Pricing Source URL",
+   "description": "Optional JSON catalog used to prefill rates and capabilities for models with no hand-entered values. Clear this to disable all outbound catalog lookups."
+  },
+  {
+   "fieldname": "catalog_prefix",
+   "fieldtype": "Data",
+   "label": "Catalog Key Prefix",
+   "description": "Optional prefix tried when matching a model id in the catalog, e.g. anthropic/ for anthropic/claude-sonnet-4."
+  },
+  {
+   "fieldname": "section_wire",
+   "fieldtype": "Section Break",
+   "label": "Wire Format"
+  },
+  {
+   "fieldname": "unsupported_params",
+   "fieldtype": "Small Text",
+   "label": "Unsupported Parameters",
+   "description": "Comma or newline separated request keys this vendor rejects; stripped before sending. Sarvam: stream_options, max_completion_tokens, service_tier"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ai Interface",
+ "name": "AI Provider Type",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "AI Manager"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

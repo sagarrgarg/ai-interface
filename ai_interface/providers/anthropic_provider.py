@@ -6,30 +6,6 @@ from ai_interface.providers.base import BaseProvider, ProviderResponse
 
 CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 
-ANTHROPIC_MODELS = [
-	{
-		"model_id": "claude-opus-4-20250514",
-		"label": "Claude Opus 4",
-		"supports_vision": 1,
-		"cost_per_input_token": 15.0 / 1_000_000,
-		"cost_per_output_token": 75.0 / 1_000_000,
-	},
-	{
-		"model_id": "claude-sonnet-4-20250514",
-		"label": "Claude Sonnet 4",
-		"supports_vision": 1,
-		"cost_per_input_token": 3.0 / 1_000_000,
-		"cost_per_output_token": 15.0 / 1_000_000,
-	},
-	{
-		"model_id": "claude-haiku-4-20250514",
-		"label": "Claude Haiku 4",
-		"supports_vision": 1,
-		"cost_per_input_token": 0.80 / 1_000_000,
-		"cost_per_output_token": 4.0 / 1_000_000,
-	},
-]
-
 
 class AnthropicProvider(BaseProvider):
 	def chat(
@@ -139,27 +115,19 @@ class AnthropicProvider(BaseProvider):
 		auth_type: str = "API Key",
 		api_base_url: str = "",
 	) -> list[dict]:
-		if auth_type == "API Key":
-			try:
-				client = self._get_client(credential, auth_type, api_base_url, timeout=30)
-				response = client.models.list(limit=100)
-				models = []
-				for model in response.data:
-					cost_entry = next((m for m in ANTHROPIC_MODELS if m["model_id"] == model.id), None)
-					models.append(
-						{
-							"model_id": model.id,
-							"label": model.display_name,
-							"supports_vision": 1,
-							"cost_per_input_token": cost_entry["cost_per_input_token"] if cost_entry else 0,
-							"cost_per_output_token": cost_entry["cost_per_output_token"] if cost_entry else 0,
-						}
-					)
-				return models
-			except Exception:
-				pass
+		"""Discover model ids from the Anthropic API.
 
-		return [dict(m) for m in ANTHROPIC_MODELS]
+		Ids and labels only — the API carries no pricing or context window, so
+		those are left to the catalog prefill and the admin rather than invented
+		here. An OAuth credential may not be allowed to list models; an empty list
+		means "add them by hand", not "this vendor has none".
+		"""
+		client = self._get_client(credential, auth_type, api_base_url, timeout=30)
+		response = client.models.list(limit=100)
+		return [
+			{"model_id": model.id, "label": getattr(model, "display_name", model.id)}
+			for model in response.data
+		]
 
 	def _get_client(
 		self, credential: str, auth_type: str, api_base_url: str, timeout: int

@@ -3,30 +3,6 @@ import subprocess
 
 from ai_interface.providers.base import BaseProvider, ProviderResponse
 
-CLAUDE_CODE_MODELS = [
-	{
-		"model_id": "claude-opus-4-20250514",
-		"label": "Claude Opus 4",
-		"supports_vision": 1,
-		"cost_per_input_token": 15.0 / 1_000_000,
-		"cost_per_output_token": 75.0 / 1_000_000,
-	},
-	{
-		"model_id": "claude-sonnet-4-20250514",
-		"label": "Claude Sonnet 4",
-		"supports_vision": 1,
-		"cost_per_input_token": 3.0 / 1_000_000,
-		"cost_per_output_token": 15.0 / 1_000_000,
-	},
-	{
-		"model_id": "claude-haiku-4-20250514",
-		"label": "Claude Haiku 4",
-		"supports_vision": 1,
-		"cost_per_input_token": 0.80 / 1_000_000,
-		"cost_per_output_token": 4.0 / 1_000_000,
-	},
-]
-
 
 class ClaudeCodeProvider(BaseProvider):
 	"""Provider that routes through Claude Code CLI (claude -p).
@@ -101,7 +77,13 @@ class ClaudeCodeProvider(BaseProvider):
 		auth_type: str = "API Key",
 		api_base_url: str = "",
 	) -> list[dict]:
-		return [dict(m) for m in CLAUDE_CODE_MODELS]
+		"""The CLI exposes no model-listing endpoint.
+
+		Which models a Claude Code install can reach depends on the subscription
+		behind its OAuth token, so guessing here would be fiction. Models are
+		entered by hand on the AI Provider.
+		"""
+		return []
 
 	def _run_claude(
 		self,

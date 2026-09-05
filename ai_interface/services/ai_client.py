@@ -184,7 +184,7 @@ def _execute_ai_call(
 		log.db_set(
 			{
 				"status": "Failed",
-				"error_type": _classify_error(str(e)),
+				"error_type": _classify_error(e),
 				"error_message": f"{e!s}\n\n{traceback.format_exc()}",
 				"latency_ms": latency_ms,
 			}
@@ -268,20 +268,48 @@ def _module_for_doctype(doctype: str) -> str | None:
 		return None
 
 
+# Status code is the vendor-neutral fact; text matching is the fallback for
+# adapters that raise plain exceptions (SDKs, the Claude Code CLI).
+STATUS_ERROR_TYPES = {
+	400: "Provider Error",
+	401: "Auth",
+	403: "Auth",
+	404: "Config Error",
+	408: "Timeout",
+	422: "Provider Error",
+	429: "Rate Limit",
+	500: "Provider Error",
+	502: "Provider Error",
+	503: "Provider Error",
+	504: "Timeout",
+	529: "Rate Limit",
+}
+
 ERROR_PATTERNS = (
-	("Auth", ("authentication", "unauthorized", "401", "invalid api key", "invalid x-api-key", "oauth")),
-	("Rate Limit", ("rate limit", "429", "too many requests", "overloaded", "quota")),
+	("Auth", ("authentication", "unauthorized", "invalid api key", "invalid x-api-key", "oauth", "api key")),
+	("Rate Limit", ("rate limit", "too many requests", "overloaded", "quota")),
 	("Timeout", ("timeout", "timed out", "deadline")),
-	("Invalid Response", ("json", "could not parse", "unexpected response", "decode")),
-	("Config Error", ("no ai provider", "unknown provider type", "is disabled", "not configured")),
-	("File Error", ("file not found", "access denied", "poppler", "pdf", "no such file")),
-	("Provider Error", ("api error", "provider", "anthropic", "connection", "5xx", "500", "503")),
+	("Invalid Response", ("json", "could not parse", "unexpected response", "decode", "no choices")),
+	(
+		"Config Error",
+		("no ai provider", "unknown provider type", "is disabled", "not configured", "no base url"),
+	),
+	("File Error", ("file not found", "access denied", "poppler", "no such file")),
+	("Provider Error", ("api error", "connection", "connection refused", "name resolution")),
 )
 
 
-def _classify_error(message: str) -> str:
-	"""Map a raw exception string onto the AI Call Log error_type taxonomy."""
-	haystack = (message or "").lower()
+def _classify_error(exc: "Exception | str") -> str:
+	"""Map a provider failure onto the AI Call Log error_type taxonomy.
+
+	Prefers the HTTP status an adapter attached, because a vendor rewording its
+	error text must not silently reclassify every failure on the dashboard.
+	"""
+	status = getattr(exc, "status_code", None)
+	if status in STATUS_ERROR_TYPES:
+		return STATUS_ERROR_TYPES[status]
+
+	haystack = str(exc or "").lower()
 	for label, needles in ERROR_PATTERNS:
 		if any(n in haystack for n in needles):
 			return label

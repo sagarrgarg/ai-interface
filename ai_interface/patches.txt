@@ -2,3 +2,4 @@
 ai_interface.patches.v1_0.create_ai_manager_role
 
 [post_model_sync]
+ai_interface.patches.v1_0.create_default_provider_types

@@ -49,9 +49,11 @@ pre-commit run --all-files
 ```
 ai_interface/
   providers/            # Multi-provider abstraction
-    base.py             # BaseProvider ABC + ProviderResponse dataclass
+    base.py             # BaseProvider ABC + ProviderResponse + ProviderHTTPError
+    openai_compatible.py # Generic adapter for any OpenAI-format vendor
     anthropic_provider.py
-    __init__.py         # Provider registry (type string → class)
+    claude_code_provider.py
+    __init__.py         # Resolver - reads AI Provider Type, imports adapter_path
   services/             # White-labeled API — what consumer apps import
     ai_client.py        # Core dispatcher: resolve provider, enqueue/execute, log
     generator.py        # generate(prompt/template, context) → text
@@ -61,7 +63,8 @@ ai_interface/
     doctype/
       ai_settings/      # Single: default provider, model, timeouts
       ai_provider/      # One per provider: API key, models, base URL
-      ai_provider_model/ # Child table: model ID, vision support, token costs
+      ai_provider_type/ # Vendor wire config: adapter path, endpoints, auth header
+      ai_provider_model/ # Child table: model ID, capabilities, token rates
       ai_prompt_template/ # Versioned Jinja templates for prompts
       ai_call_log/      # Full audit trail: prompt, response, tokens, cost
   hooks.py
@@ -71,7 +74,9 @@ ai_interface/
 ## Key Design Decisions
 
 - **Async by default**: All calls go through `frappe.enqueue()`, return an AI Call Log name (job ID). Consumer listens via `frappe.realtime` or polls. Pass `sync=True` for immediate response.
-- **Provider abstraction**: `BaseProvider` ABC with `chat()` and `vision()` methods. Adding a provider = one file + one registry line. Anthropic ships first.
+- **Nothing about a vendor lives in code.** A provider type is an **AI Provider Type** record holding the adapter path, base URL, chat/models paths, auth header and prefix, billing currency and rejected parameters. There is no registry dict and no static model or price table - adding a vendor that speaks the OpenAI format (Sarvam, Groq, Together, Mistral, DeepSeek, OpenRouter, Ollama, vLLM) is **configuration, not a commit**. Only a genuinely different wire protocol needs a new adapter class, and even that is registered by a record, so another app can ship its own.
+- **Model catalogs are discovered, never hardcoded.** `fetch_models` reads the listing endpoint, then **merges** by `model_id`: rates a human typed are stamped `Manual` and never overwritten, models the vendor drops are disabled rather than deleted (old call logs still cost against them), and blanks are prefilled from the optional **Pricing Source URL** - clear that field and no outbound catalog call is made at all. Anything still unpriced is flagged, so a zero cost reads as *unknown*, not *free*.
+- **Errors classify by HTTP status**, not by matching vendor error text, so a reworded provider message cannot silently reshuffle the dashboard.
 - **Resolution chain**: caller override → template override → AI Settings default (for both provider and model).
 - **Consumer pattern**: `from ai_interface.services.generator import generate` — never import from `providers/`.
 
