@@ -31,6 +31,9 @@
     "column_break_metrics",
     "currency",
     "cost",
+    "exchange_rate",
+    "base_cost",
+    "base_currency",
     "latency_ms",
     "section_audit",
     "user"
@@ -211,6 +214,31 @@
       "label": "Cost",
       "options": "currency",
       "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "exchange_rate",
+      "fieldtype": "Float",
+      "label": "Exchange Rate",
+      "precision": "9",
+      "read_only": 1,
+      "description": "Rate used at call time. Snapshotted so later rate changes never rewrite history."
+    },
+    {
+      "default": "0",
+      "fieldname": "base_cost",
+      "fieldtype": "Currency",
+      "label": "Cost (Base)",
+      "options": "base_currency",
+      "precision": "6",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "base_currency",
+      "fieldtype": "Link",
+      "label": "Base Currency",
+      "options": "Currency",
       "read_only": 1
     },
     {

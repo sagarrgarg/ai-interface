@@ -61,7 +61,7 @@ ai_interface/
     query_engine.py     # query(question) → NL answer from ERPNext data
   ai_interface/         # Frappe module — doctypes
     doctype/
-      ai_settings/      # Single: default provider, model, timeouts
+      ai_settings/      # Single: default provider, model, timeouts, base currency
       ai_provider/      # One per provider: API key, models, base URL
       ai_provider_type/ # Vendor wire config: adapter path, endpoints, auth header
       ai_provider_model/ # Child table: model ID, capabilities, token rates
@@ -77,6 +77,7 @@ ai_interface/
 - **Nothing about a vendor lives in code.** A provider type is an **AI Provider Type** record holding the adapter path, base URL, chat/models paths, auth header and prefix, billing currency and rejected parameters. There is no registry dict and no static model or price table - adding a vendor that speaks the OpenAI format (Sarvam, Groq, Together, Mistral, DeepSeek, OpenRouter, Ollama, vLLM) is **configuration, not a commit**. Only a genuinely different wire protocol needs a new adapter class, and even that is registered by a record, so another app can ship its own.
 - **Model catalogs are discovered, never hardcoded.** `fetch_models` reads the listing endpoint, then **merges** by `model_id`: rates a human typed are stamped `Manual` and never overwritten, models the vendor drops are disabled rather than deleted (old call logs still cost against them), and blanks are prefilled from the optional **Pricing Source URL** - clear that field and no outbound catalog call is made at all. Anything still unpriced is flagged, so a zero cost reads as *unknown*, not *free*.
 - **Errors classify by HTTP status**, not by matching vendor error text, so a reworded provider message cannot silently reshuffle the dashboard.
+- **Cost is stored twice, on purpose.** `cost` is what the provider billed, in *its* currency (Sarvam INR, Anthropic USD). `base_cost` is the same amount converted once, at call time, into the single `base_currency` from AI Settings, with the rate snapshotted onto the row. Every dashboard total aggregates `base_cost`; the display-currency picker converts that at read time, so switching the view is a lens over history and never a rewrite of it. A rate that cannot be resolved stores **0, never a silent 1.0** — treating ₹100 as $100 is the failure this design exists to prevent — and those calls are surfaced as *"missing from every cost total"* rather than quietly under-reported.
 - **Resolution chain**: caller override → template override → AI Settings default (for both provider and model).
 - **Consumer pattern**: `from ai_interface.services.generator import generate` — never import from `providers/`.
 

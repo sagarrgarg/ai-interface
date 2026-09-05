@@ -4,6 +4,7 @@ import traceback
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 from ai_interface.providers import get_provider
 from ai_interface.providers.base import ProviderResponse
@@ -64,7 +65,8 @@ def call_ai(
 		reference_name=reference_name,
 		module=module,
 		action=action,
-		currency="USD",
+		currency=provider_doc.currency or "USD",
+		base_currency=_base_currency(settings),
 	)
 
 	if sync:
@@ -160,6 +162,9 @@ def _execute_ai_call(
 		cost = _calculate_cost(provider_doc, model, response.input_tokens, response.output_tokens)
 		retain_payloads = bool(frappe.db.get_single_value("AI Settings", "enable_logging"))
 
+		base_currency = log.base_currency or _base_currency()
+		rate = _exchange_rate(provider_doc, base_currency)
+
 		log.db_set(
 			{
 				"status": "Completed",
@@ -167,6 +172,9 @@ def _execute_ai_call(
 				"input_tokens": response.input_tokens,
 				"output_tokens": response.output_tokens,
 				"cost": cost,
+				"exchange_rate": rate,
+				"base_cost": cost * rate,
+				"base_currency": base_currency,
 				"latency_ms": latency_ms,
 				"model": response.model,
 			}
@@ -332,6 +340,48 @@ def _safe_resolve_path(url: str) -> str:
 		frappe.throw(_("File not found: {0}").format(url))
 
 	return resolved
+
+
+DEFAULT_BASE_CURRENCY = "USD"
+
+
+def _base_currency(settings=None) -> str:
+	"""The one currency every call is normalised to for totalling."""
+	value = (settings.base_currency if settings else None) or frappe.db.get_single_value(
+		"AI Settings", "base_currency"
+	)
+	return value or frappe.db.get_default("currency") or DEFAULT_BASE_CURRENCY
+
+
+def _exchange_rate(provider_doc, base_currency: str) -> float:
+	"""Rate from the provider billing currency into the base currency.
+
+	Snapshotted onto each log so a later rate change never rewrites past spend.
+	A rate that cannot be resolved returns 0 rather than a silent 1.0 — treating
+	₹100 as $100 is the exact error this stage exists to prevent, so an
+	unconvertible call is left visibly unconverted for the dashboard to flag.
+	"""
+	from_currency = getattr(provider_doc, "currency", None) or base_currency
+	if from_currency == base_currency:
+		return 1.0
+
+	manual = flt(getattr(provider_doc, "exchange_rate", 0))
+	if manual > 0:
+		return manual
+
+	try:
+		from erpnext.setup.utils import get_exchange_rate
+
+		rate = flt(get_exchange_rate(from_currency, base_currency))
+		if rate > 0:
+			return rate
+	except Exception:
+		frappe.log_error(
+			title="AI Interface: exchange rate lookup failed",
+			message=f"{from_currency} -> {base_currency}\n{traceback.format_exc()}",
+		)
+
+	return 0.0
 
 
 def _load_images(file_urls: list[str]) -> list[bytes]:

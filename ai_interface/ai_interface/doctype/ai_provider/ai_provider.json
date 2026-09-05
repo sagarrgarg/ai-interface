@@ -15,6 +15,7 @@
   "auth_token",
   "api_base_url",
   "currency",
+  "exchange_rate",
   "section_models",
   "fetch_models_button",
   "models"
@@ -93,6 +94,14 @@
    "label": "Billing Currency",
    "options": "Currency",
    "description": "Currency this vendor prices in. Defaults from the provider type."
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate to Base",
+   "precision": "9",
+   "description": "Optional override: 1 unit of the billing currency in base currency. Leave 0 to use the ERPNext Currency Exchange rate at call time.",
+   "depends_on": "eval:doc.currency"
   },
   {
    "fieldname": "section_models",

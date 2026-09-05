@@ -91,18 +91,87 @@ def _parse_filters(filters) -> dict:
 	return dict(filters) if filters else {}
 
 
+def _base_currency() -> str:
+	from ai_interface.services.ai_client import _base_currency as resolve
+
+	return resolve()
+
+
+def _display_rate(base_currency: str, display_currency: str) -> float:
+	if not display_currency or display_currency == base_currency:
+		return 1.0
+	try:
+		from erpnext.setup.utils import get_exchange_rate
+
+		rate = flt(get_exchange_rate(base_currency, display_currency))
+		if rate > 0:
+			return rate
+	except Exception:
+		pass
+	return 0.0
+
+
+def _currency_context(filters: dict) -> dict:
+	"""Which currency to read the numbers in.
+
+	Conversion happens here, at read time, over the stored base_cost — so
+	switching the view is a lens on history, never a rewrite of it. If no rate
+	is available the view falls back to base rather than mis-scaling every
+	number on the page.
+	"""
+	base = _base_currency()
+	display = filters.get("display_currency") or base
+	rate = _display_rate(base, display)
+	if not rate:
+		display, rate = base, 1.0
+	return {"base_currency": base, "currency": display, "rate": rate}
+
+
+def _convert(rows, ctx: dict, *keys):
+	"""Scale already-aggregated cost fields into the display currency."""
+	if ctx["rate"] == 1.0:
+		return rows
+	for row in rows:
+		for key in keys:
+			if row.get(key):
+				row[key] = flt(row[key] * ctx["rate"], 6)
+	return rows
+
+
+def _money(amount, ctx: dict) -> str:
+	"""Format an already-converted amount in the display currency."""
+	return frappe.utils.fmt_money(flt(amount, 4), currency=ctx["currency"])
+
+
+def _count_unconverted(where: str, params: dict) -> int:
+	"""Completed calls whose cost never made it into the base currency.
+
+	Their spend is real but missing from every total, so the dashboard says so
+	instead of quietly under-reporting.
+	"""
+	return frappe.db.sql(
+		f"""
+		SELECT COUNT(*) FROM `tabAI Call Log` log
+		WHERE {where} AND log.status = 'Completed'
+		  AND log.cost > 0 AND COALESCE(log.base_cost, 0) = 0
+		""",
+		params,
+	)[0][0]
+
+
 @frappe.whitelist()
 def get_summary(filters=None):
 	"""KPI strip: totals for the window, plus deltas against the previous window."""
 	_check_access()
 	filters = _parse_filters(filters)
 	where, params = _build_conditions(filters)
+	ctx = _currency_context(filters)
 
 	current = frappe.db.sql(
 		f"""
 		SELECT
 			COUNT(*)                                              AS calls,
-			COALESCE(SUM(log.cost), 0)                            AS cost,
+			COALESCE(SUM(log.base_cost), 0)                            AS cost,
 			COALESCE(SUM(log.input_tokens), 0)                    AS input_tokens,
 			COALESCE(SUM(log.output_tokens), 0)                   AS output_tokens,
 			SUM(CASE WHEN log.status = 'Completed' THEN 1 ELSE 0 END) AS completed,
@@ -124,7 +193,7 @@ def get_summary(filters=None):
 
 	previous = frappe.db.sql(
 		f"""
-		SELECT COUNT(*) AS calls, COALESCE(SUM(log.cost), 0) AS cost
+		SELECT COUNT(*) AS calls, COALESCE(SUM(log.base_cost), 0) AS cost
 		FROM `tabAI Call Log` log
 		WHERE {where}
 		""",
@@ -135,8 +204,9 @@ def get_summary(filters=None):
 	settled = (current.completed or 0) + (current.failed or 0)
 	p95 = _percentile_latency(where, params, 0.95)
 
+	rate = ctx["rate"]
 	return {
-		"cost": flt(current.cost, 6),
+		"cost": flt((current.cost or 0) * rate, 6),
 		"calls": current.calls or 0,
 		"completed": current.completed or 0,
 		"failed": current.failed or 0,
@@ -146,12 +216,15 @@ def get_summary(filters=None):
 		"output_tokens": current.output_tokens or 0,
 		"avg_latency_ms": int(current.avg_latency or 0),
 		"p95_latency_ms": p95,
-		"avg_cost_per_call": flt((current.cost or 0) / current.calls, 6) if current.calls else 0,
-		"prev_cost": flt(previous.cost, 6),
+		"avg_cost_per_call": flt((current.cost or 0) * rate / current.calls, 6) if current.calls else 0,
+		"prev_cost": flt((previous.cost or 0) * rate, 6),
 		"prev_calls": previous.calls or 0,
 		"cost_delta_pct": _pct_change(previous.cost, current.cost),
 		"calls_delta_pct": _pct_change(previous.calls, current.calls),
-		"currency": "USD",
+		"currency": ctx["currency"],
+		"base_currency": ctx["base_currency"],
+		"display_rate": rate,
+		"unconverted_calls": _count_unconverted(where, params),
 		"from_date": str(params["from_date"]),
 		"to_date": str(params["to_date"]),
 	}
@@ -193,6 +266,7 @@ def get_timeseries(filters=None, group_by="calling_app", granularity="day"):
 		frappe.throw(_("Invalid group_by dimension."))
 
 	where, params = _build_conditions(filters)
+	ctx = _currency_context(filters)
 	bucket = "DATE(log.creation)" if granularity == "day" else "DATE_FORMAT(log.creation, '%%Y-%%m-%%d %%H:00:00')"
 	col = DIMENSIONS[group_by]
 
@@ -200,7 +274,7 @@ def get_timeseries(filters=None, group_by="calling_app", granularity="day"):
 		f"""
 		SELECT {bucket} AS bucket,
 		       COALESCE(NULLIF(log.`{col}`, ''), 'Unattributed') AS series,
-		       COALESCE(SUM(log.cost), 0) AS cost,
+		       COALESCE(SUM(log.base_cost), 0) AS cost,
 		       COUNT(*)                   AS calls
 		FROM `tabAI Call Log` log
 		WHERE {where}
@@ -210,6 +284,8 @@ def get_timeseries(filters=None, group_by="calling_app", granularity="day"):
 		params,
 		as_dict=True,
 	)
+
+	_convert(rows, ctx, "cost")
 
 	buckets, series_totals = [], {}
 	for r in rows:
@@ -236,7 +312,7 @@ def get_timeseries(filters=None, group_by="calling_app", granularity="day"):
 			call_points.append(n)
 		data.append({"name": name, "cost": cost_points, "calls": call_points})
 
-	return {"buckets": buckets, "series": data}
+	return {"buckets": buckets, "series": data, "currency": ctx["currency"]}
 
 
 @frappe.whitelist()
@@ -250,12 +326,13 @@ def get_attribution(filters=None, dimension="calling_app", parent_filters=None, 
 		frappe.throw(_("Invalid dimension."))
 
 	where, params = _build_conditions(filters)
+	ctx = _currency_context(filters)
 	col = DIMENSIONS[dimension]
 
 	rows = frappe.db.sql(
 		f"""
 		SELECT COALESCE(NULLIF(log.`{col}`, ''), 'Unattributed') AS label,
-		       COALESCE(SUM(log.cost), 0)                        AS cost,
+		       COALESCE(SUM(log.base_cost), 0)                        AS cost,
 		       COUNT(*)                                          AS calls,
 		       SUM(CASE WHEN log.status = 'Failed' THEN 1 ELSE 0 END) AS failed,
 		       COALESCE(SUM(log.input_tokens), 0)                AS input_tokens,
@@ -271,13 +348,15 @@ def get_attribution(filters=None, dimension="calling_app", parent_filters=None, 
 		as_dict=True,
 	)
 
+	_convert(rows, ctx, "cost")
+
 	total = sum(flt(r.cost) for r in rows) or 1
 	for r in rows:
 		r["cost"] = flt(r.cost, 6)
 		r["share"] = flt(flt(r.cost) * 100.0 / total, 1)
 		r["avg_latency"] = int(r.avg_latency or 0)
 		r["next_dimension"] = _next_dimension(dimension)
-	return {"dimension": dimension, "rows": rows}
+	return {"dimension": dimension, "rows": rows, "currency": ctx["currency"]}
 
 
 def _next_dimension(current: str) -> str | None:
@@ -294,6 +373,7 @@ def get_reliability(filters=None):
 	_check_access()
 	filters = _parse_filters(filters)
 	where, params = _build_conditions(filters)
+	ctx = _currency_context(filters)
 
 	daily = frappe.db.sql(
 		f"""
@@ -318,7 +398,7 @@ def get_reliability(filters=None):
 		f"""
 		SELECT COALESCE(NULLIF(log.model, ''), 'Unknown') AS model,
 		       COUNT(*) AS calls,
-		       COALESCE(SUM(log.cost), 0) AS cost,
+		       COALESCE(SUM(log.base_cost), 0) AS cost,
 		       COALESCE(AVG(NULLIF(log.latency_ms, 0)), 0) AS avg_latency,
 		       SUM(CASE WHEN log.status = 'Completed' THEN 1 ELSE 0 END) AS completed,
 		       SUM(CASE WHEN log.status = 'Failed'    THEN 1 ELSE 0 END) AS failed,
@@ -340,7 +420,9 @@ def get_reliability(filters=None):
 		m["avg_input"] = int(m.avg_input or 0)
 		m["avg_output"] = int(m.avg_output or 0)
 
-	return {"daily": daily, "models": models}
+	_convert(daily, ctx, "cost")
+	_convert(models, ctx, "cost", "avg_cost")
+	return {"daily": daily, "models": models, "currency": ctx["currency"]}
 
 
 @frappe.whitelist()
@@ -350,6 +432,7 @@ def get_failures(filters=None, limit=25):
 	filters = _parse_filters(filters)
 	filters["status"] = "Failed"
 	where, params = _build_conditions(filters)
+	ctx = _currency_context(filters)
 
 	by_type = frappe.db.sql(
 		f"""
@@ -389,7 +472,10 @@ def get_failures(filters=None, limit=25):
 	for r in recent:
 		r["creation"] = str(r.creation)
 
-	return {"by_type": by_type, "heatmap": heatmap, "recent": recent}
+	_convert(by_type, ctx, "cost")
+	_convert(heatmap, ctx, "cost")
+	_convert(recent, ctx, "cost")
+	return {"by_type": by_type, "heatmap": heatmap, "recent": recent, "currency": ctx["currency"]}
 
 
 @frappe.whitelist()
@@ -398,6 +484,7 @@ def get_insights(filters=None):
 	_check_access()
 	filters = _parse_filters(filters)
 	where, params = _build_conditions(filters)
+	ctx = _currency_context(filters)
 	out = []
 
 	summary = get_summary(filters)
@@ -405,7 +492,7 @@ def get_insights(filters=None):
 		top = frappe.db.sql(
 			f"""
 			SELECT COALESCE(NULLIF(log.calling_app, ''), 'Unattributed') AS label,
-			       COALESCE(SUM(log.cost), 0) AS cost
+			       COALESCE(SUM(log.base_cost), 0) AS cost
 			FROM `tabAI Call Log` log WHERE {where}
 			GROUP BY label ORDER BY cost DESC LIMIT 1
 			""",
@@ -426,7 +513,7 @@ def get_insights(filters=None):
 		       COUNT(*) AS calls,
 		       AVG(log.input_tokens)  AS avg_in,
 		       AVG(log.output_tokens) AS avg_out,
-		       SUM(log.cost)          AS cost
+		       SUM(log.base_cost)          AS cost
 		FROM `tabAI Call Log` log
 		WHERE {where} AND log.status = 'Completed' AND log.output_tokens > 0
 		GROUP BY label HAVING calls >= 5 AND avg_in > avg_out * 10
@@ -435,19 +522,20 @@ def get_insights(filters=None):
 		params,
 		as_dict=True,
 	)
+	_convert(bloated, ctx, "cost")
 	for b in bloated:
 		ratio = int(flt(b.avg_in) / max(flt(b.avg_out), 1))
 		out.append({
 			"severity": "info",
 			"title": f"`{b.label}` sends {ratio}x more input than it returns",
 			"detail": f"{int(b.avg_in)} in → {int(b.avg_out)} out over {b.calls} calls "
-			          f"(${flt(b.cost, 4)}). Trimming the prompt is the cheapest win here.",
+			          f"({_money(b.cost, ctx)}). Trimming the prompt is the cheapest win here.",
 		})
 
 	# Identical prompts repeated — a caching opportunity.
 	repeats = frappe.db.sql(
 		f"""
-		SELECT LEFT(log.input_text, 200) AS snippet, COUNT(*) AS calls, SUM(log.cost) AS cost
+		SELECT LEFT(log.input_text, 200) AS snippet, COUNT(*) AS calls, SUM(log.base_cost) AS cost
 		FROM `tabAI Call Log` log
 		WHERE {where} AND log.input_text IS NOT NULL AND log.input_text != ''
 		GROUP BY snippet HAVING calls >= 10
@@ -456,11 +544,13 @@ def get_insights(filters=None):
 		params,
 		as_dict=True,
 	)
+	_convert(repeats, ctx, "cost")
 	for r in repeats:
 		out.append({
 			"severity": "info",
 			"title": f"{r.calls} identical prompts in this window",
-			"detail": f"${flt(r.cost, 4)} spent re-asking the same question. A cache would collapse this to one call.",
+			"detail": f"{_money(r.cost, ctx)} spent re-asking the same question. "
+			          "A cache would collapse this to one call.",
 		})
 
 	# Failure concentration — one place accounting for most errors.
@@ -487,19 +577,30 @@ def get_insights(filters=None):
 	# Unattributed spend — the dashboard cannot explain it, so say so.
 	unattributed = frappe.db.sql(
 		f"""
-		SELECT COALESCE(SUM(log.cost), 0) AS cost, COUNT(*) AS calls
+		SELECT COALESCE(SUM(log.base_cost), 0) AS cost, COUNT(*) AS calls
 		FROM `tabAI Call Log` log
 		WHERE {where} AND (log.calling_app IS NULL OR log.calling_app = '')
 		""",
 		params,
 		as_dict=True,
 	)[0]
+	_convert([unattributed], ctx, "cost")
 	if unattributed.calls and summary["cost"] and flt(unattributed.cost) > flt(summary["cost"]) * 0.2:
 		out.append({
 			"severity": "warning",
-			"title": f"${flt(unattributed.cost, 4)} of spend is unattributed",
+			"title": f"{_money(unattributed.cost, ctx)} of spend is unattributed",
 			"detail": f"{unattributed.calls} calls arrived without a calling_app. "
 			          "Pass calling_app / reference_doctype / action so this cost can be explained.",
+		})
+
+	unconverted = _count_unconverted(where, params)
+	if unconverted:
+		out.append({
+			"severity": "critical",
+			"title": f"{unconverted} calls are missing from every cost total",
+			"detail": "These calls billed a real amount but no exchange rate into "
+			          f"{ctx['base_currency']} was available, so their spend is excluded from the "
+			          "figures above. Set the rate on the AI Provider, or add a Currency Exchange record.",
 		})
 
 	if not out:
@@ -529,6 +630,14 @@ def get_filter_options(filters=None):
 			as_dict=True,
 		)
 		out[field] = [r.v for r in rows]
+
+	# Currencies worth offering: the base, plus whatever providers actually bill in.
+	base = _base_currency()
+	billed = frappe.get_all(
+		"AI Provider", pluck="currency", filters={"currency": ["is", "set"]}, distinct=True
+	)
+	out["display_currency"] = sorted({base, *(c for c in billed if c)})
+	out["base_currency"] = base
 	return out
 
 

@@ -14,13 +14,15 @@
     "section_vision",
     "max_pdf_pages",
     "section_logging",
-    "enable_logging"
+    "enable_logging",
+    "section_currency",
+    "base_currency"
   ],
   "fields": [
     {
       "fieldname": "intro_html",
       "fieldtype": "HTML",
-      "options": "<div class=\"alert alert-info\" style=\"margin-bottom:15px\"><b>How this works.</b> Consumer apps (Excom, DocPulse, BNS, etc.) call <code>generate()</code>, <code>extract()</code>, or <code>query()</code> without naming a provider. The dispatcher resolves: <b>caller override → template override → these defaults</b>. Set sensible defaults here once; consumers stay provider-agnostic.<br><br><b>Quick recommended setup:</b><br>1. Create an <b>AI Provider</b> (Claude Code for Pro plan, or Anthropic with an API key)<br>2. Click <b>Fetch Models</b> in the provider doc<br>3. Set <b>Default Provider</b> + <b>Default Model</b> below<br>4. Leave timeouts/tokens at defaults unless you have a reason to change<br>5. Keep <b>Enable Logging</b> on — needed for cost tracking and async result delivery</div>"
+      "options": "<div class=\"alert alert-info\" style=\"margin-bottom:15px\"><b>How this works.</b> Consumer apps (Excom, DocPulse, BNS, etc.) call <code>generate()</code>, <code>extract()</code>, or <code>query()</code> without naming a provider. The dispatcher resolves: <b>caller override \u2192 template override \u2192 these defaults</b>. Set sensible defaults here once; consumers stay provider-agnostic.<br><br><b>Quick recommended setup:</b><br>1. Create an <b>AI Provider</b> (Claude Code for Pro plan, or Anthropic with an API key)<br>2. Click <b>Fetch Models</b> in the provider doc<br>3. Set <b>Default Provider</b> + <b>Default Model</b> below<br>4. Leave timeouts/tokens at defaults unless you have a reason to change<br>5. Keep <b>Enable Logging</b> on \u2014 needed for cost tracking and async result delivery</div>"
     },
     {
       "fieldname": "default_provider",
@@ -28,7 +30,7 @@
       "label": "Default Provider",
       "options": "AI Provider",
       "reqd": 1,
-      "description": "Which AI Provider runs calls when the consumer app doesn't specify one. Pick the cheapest provider that meets your latency + capability needs. For Claude Pro/Max subscribers: use a provider with type 'Anthropic' + Auth Token (OAuth) — fastest path. For pay-as-you-go: 'Anthropic' + API Key. For zero-config local routing: 'Claude Code' (shells out to CLI, slower)."
+      "description": "Which AI Provider runs calls when the consumer app doesn't specify one. Pick the cheapest provider that meets your latency + capability needs. For Claude Pro/Max subscribers: use a provider with type 'Anthropic' + Auth Token (OAuth) \u2014 fastest path. For pay-as-you-go: 'Anthropic' + API Key. For zero-config local routing: 'Claude Code' (shells out to CLI, slower)."
     },
     {
       "fieldname": "default_model",
@@ -77,7 +79,20 @@
       "fieldname": "enable_logging",
       "fieldtype": "Check",
       "label": "Enable Call Logging",
-      "description": "When ON: every call writes an AI Call Log row (prompt, response, tokens, cost, latency, status). Required for async delivery — consumers poll the log by name. Required for cost auditing. Required for debugging failures. Turn OFF only if you have a strict data-retention rule against storing prompts/responses. Logs auto-clear after 90 days (see hooks.py default_log_clearing_doctypes)."
+      "description": "When ON: every call writes an AI Call Log row (prompt, response, tokens, cost, latency, status). Required for async delivery \u2014 consumers poll the log by name. Required for cost auditing. Required for debugging failures. Turn OFF only if you have a strict data-retention rule against storing prompts/responses. Logs auto-clear after 90 days (see hooks.py default_log_clearing_doctypes)."
+    },
+    {
+      "fieldname": "section_currency",
+      "fieldtype": "Section Break",
+      "label": "Currency"
+    },
+    {
+      "fieldname": "base_currency",
+      "fieldtype": "Link",
+      "label": "Base Currency",
+      "options": "Currency",
+      "reqd": 1,
+      "description": "Every call is converted to this currency once, at call time, so spend from providers that bill in different currencies can be totalled honestly. Changing it does not rewrite past calls. The dashboard can display any currency you like on top of it."
     }
   ],
   "index_web_pages_for_search": 0,

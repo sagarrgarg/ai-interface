@@ -60,7 +60,7 @@ class AICommandCenter {
 								<option value="provider">${__("by Provider")}</option>
 							</select>
 						</div>
-						<div class="acc-sub">${__("Stacked daily cost in USD.")}</div>
+						<div class="acc-sub">${__("Stacked daily cost.")}</div>
 						<div data-el="timeseries"></div>
 					</div>
 
@@ -128,6 +128,9 @@ class AICommandCenter {
 			<select data-filter="module"><option value="">${__("All modules")}</option></select>
 			<select data-filter="function_type"><option value="">${__("All functions")}</option></select>
 			<select data-filter="model"><option value="">${__("All models")}</option></select>
+			<select data-filter="display_currency" data-el="currency" title="${__(
+				"Currency to display figures in"
+			)}"></select>
 			<select data-filter="status">
 				<option value="">${__("All statuses")}</option>
 				<option value="Completed">${__("Completed")}</option>
@@ -170,6 +173,16 @@ class AICommandCenter {
 		});
 	}
 
+	/* Every endpoint reports the currency its figures are in; the UI never
+	 * assumes one. Falls back to the base currency before the first response. */
+	set_currency(code) {
+		if (code) this.currency = code;
+	}
+
+	money(v, precision = 4) {
+		return format_currency(Number(v || 0), this.currency || "USD", precision);
+	}
+
 	call(method, args) {
 		return frappe.xcall(API + method, args).catch((e) => {
 			console.error("[AI Command Center]", method, e);
@@ -204,7 +217,8 @@ class AICommandCenter {
 		const d = await this.call("get_summary", { filters: this.active_filters });
 		if (!d) return;
 
-		const money = (v) => "$" + frappe.utils.escape_html(Number(v || 0).toFixed(4));
+		this.set_currency(d.currency);
+		const money = (v) => frappe.utils.escape_html(this.money(v));
 		const num = (v) => frappe.format(v || 0, { fieldtype: "Int" });
 		const delta = (pct, invert) => {
 			if (pct === null || pct === undefined) return `<span class="acc-delta flat">—</span>`;
@@ -278,6 +292,7 @@ class AICommandCenter {
 			group_by: this.groupBy,
 		});
 		if (!d) return;
+		this.set_currency(d.currency);
 		if (!d.buckets.length) return this.el.timeseries.html(this.empty(__("No calls in this window.")));
 
 		const cs = getComputedStyle(this.root[0]);
@@ -303,7 +318,7 @@ class AICommandCenter {
 			const y = pad.t + (ih * g) / 4;
 			const val = max * (1 - g / 4);
 			svg += `<line class="acc-grid-line" x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}"/>`;
-			svg += `<text class="acc-axis-label" x="${pad.l - 8}" y="${y + 3}" text-anchor="end">$${val.toFixed(
+			svg += `<text class="acc-axis-label" x="${pad.l - 8}" y="${y + 3}" text-anchor="end">${this.money(val, 
 				3
 			)}</text>`;
 		}
@@ -358,9 +373,9 @@ class AICommandCenter {
 			const s = d.series[si];
 			self.show_tip(
 				e,
-				`<b>${frappe.utils.escape_html(s.name)}</b><br>${d.buckets[bi]}<br>$${(
-					s.cost[bi] || 0
-				).toFixed(4)} · ${s.calls[bi] || 0} ${__("calls")}`
+				`<b>${frappe.utils.escape_html(s.name)}</b><br>${d.buckets[bi]}<br>${self.money(
+					s.cost[bi]
+				)} · ${s.calls[bi] || 0} ${__("calls")}`
 			);
 		}).on("mouseleave", () => self.hide_tip());
 	}
@@ -380,6 +395,7 @@ class AICommandCenter {
 			parent_filters: this.drill_filters(),
 		});
 		if (!d) return;
+		this.set_currency(d.currency);
 
 		this.render_crumbs();
 		if (!d.rows.length) return this.el.attribution.html(this.empty(__("Nothing to attribute here.")));
@@ -403,7 +419,7 @@ class AICommandCenter {
 					<div class="acc-bar-track">
 						<div class="acc-bar-fill" style="width:${w}%;background:${fill}"></div>
 					</div>
-					<div class="acc-bar-val">$${r.cost.toFixed(4)} · ${r.share}% · ${r.calls}${fails}</div>
+					<div class="acc-bar-val">${this.money(r.cost)} · ${r.share}% · ${r.calls}${fails}</div>
 				</div>`;
 			})
 			.join("");
@@ -443,6 +459,7 @@ class AICommandCenter {
 		this.el.errtypes.html(this.skeleton(4, 22));
 		const d = await this.call("get_reliability", { filters: this.active_filters });
 		if (!d) return;
+		this.set_currency(d.currency);
 
 		const pts = d.daily.filter((x) => x.success_rate !== null);
 		if (!pts.length) {
@@ -508,8 +525,8 @@ class AICommandCenter {
 					return `<tr>
 						<td>${frappe.utils.escape_html(m.model)}</td>
 						<td class="num">${m.calls}</td>
-						<td class="num">$${m.cost.toFixed(4)}</td>
-						<td class="num">$${m.avg_cost.toFixed(6)}</td>
+						<td class="num">${this.money(m.cost)}</td>
+						<td class="num">${this.money(m.avg_cost, 6)}</td>
 						<td class="num">${m.avg_input} → ${m.avg_output}</td>
 						<td class="num">${m.avg_latency}ms</td>
 						<td>${sr === null ? "—" : `<span class="acc-pill ${cls}">${sr}%</span>`}</td>
@@ -532,6 +549,7 @@ class AICommandCenter {
 		this.el.failures.html(this.skeleton(5, 22));
 		const d = await this.call("get_failures", { filters: this.filters });
 		if (!d) return;
+		this.set_currency(d.currency);
 
 		const cs = getComputedStyle(this.root[0]);
 
@@ -670,8 +688,9 @@ class AICommandCenter {
 		if (!opts) return;
 		Object.keys(opts).forEach((field) => {
 			const sel = this.el.filters.find(`[data-filter="${field}"]`);
-			if (!sel.length) return;
-			const current = this.filters[field] || "";
+			if (!sel.length || !Array.isArray(opts[field])) return;
+			const current =
+				this.filters[field] || (field === "display_currency" ? opts.base_currency : "") || "";
 			const first = sel.find("option").first();
 			sel.html(first);
 			opts[field].forEach((v) => {
