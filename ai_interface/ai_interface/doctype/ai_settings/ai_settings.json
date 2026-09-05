@@ -16,7 +16,19 @@
     "section_logging",
     "enable_logging",
     "section_currency",
-    "base_currency"
+    "base_currency",
+    "section_routing",
+    "routing_rules",
+    "enable_fallback",
+    "section_budget",
+    "enable_budget",
+    "daily_budget",
+    "monthly_budget",
+    "column_break_budget",
+    "budget_action",
+    "budget_alert_threshold",
+    "section_app_budget",
+    "app_budgets"
   ],
   "fields": [
     {
@@ -93,6 +105,89 @@
       "options": "Currency",
       "reqd": 1,
       "description": "Every call is converted to this currency once, at call time, so spend from providers that bill in different currencies can be totalled honestly. Changing it does not rewrite past calls. The dashboard can display any currency you like on top of it."
+    },
+    {
+      "fieldname": "section_routing",
+      "fieldtype": "Section Break",
+      "label": "Routing",
+      "description": "Callers ask for a capability, not a model. Rules are matched most-specific first (app + function, then function, then catch-all); later rules by priority act as fallbacks when a provider is rate-limited, timing out or erroring."
+    },
+    {
+      "fieldname": "routing_rules",
+      "fieldtype": "Table",
+      "label": "Routing Rules",
+      "options": "AI Routing Rule"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_fallback",
+      "fieldtype": "Check",
+      "label": "Fall Back to Next Rule on Retryable Failure",
+      "description": "Rate limits, timeouts and 5xx only. Auth and configuration errors never retry."
+    },
+    {
+      "fieldname": "section_budget",
+      "fieldtype": "Section Break",
+      "label": "Spend Caps"
+    },
+    {
+      "default": "0",
+      "fieldname": "enable_budget",
+      "fieldtype": "Check",
+      "label": "Enforce Spend Caps"
+    },
+    {
+      "default": "0",
+      "fieldname": "daily_budget",
+      "fieldtype": "Currency",
+      "label": "Daily Budget",
+      "options": "base_currency",
+      "depends_on": "enable_budget",
+      "description": "0 = no daily cap."
+    },
+    {
+      "default": "0",
+      "fieldname": "monthly_budget",
+      "fieldtype": "Currency",
+      "label": "Monthly Budget",
+      "options": "base_currency",
+      "depends_on": "enable_budget",
+      "description": "0 = no monthly cap. Calendar month, in base currency."
+    },
+    {
+      "fieldname": "column_break_budget",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Warn",
+      "fieldname": "budget_action",
+      "fieldtype": "Select",
+      "label": "On Exceed",
+      "options": "Warn\nBlock",
+      "depends_on": "enable_budget",
+      "description": "Warn logs and notifies but lets calls through. Block refuses them before they cost anything."
+    },
+    {
+      "default": "80",
+      "fieldname": "budget_alert_threshold",
+      "fieldtype": "Int",
+      "label": "Alert At (%)",
+      "depends_on": "enable_budget",
+      "description": "Notify System Managers once spend crosses this share of a cap."
+    },
+    {
+      "fieldname": "section_app_budget",
+      "fieldtype": "Section Break",
+      "label": "Per-App Caps",
+      "depends_on": "enable_budget",
+      "description": "Optional. Stops one app draining the budget the others need."
+    },
+    {
+      "fieldname": "app_budgets",
+      "fieldtype": "Table",
+      "label": "App Budgets",
+      "options": "AI App Budget",
+      "depends_on": "enable_budget"
     }
   ],
   "index_web_pages_for_search": 0,

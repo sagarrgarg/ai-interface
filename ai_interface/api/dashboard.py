@@ -593,6 +593,49 @@ def get_insights(filters=None):
 			          "Pass calling_app / reference_doctype / action so this cost can be explained.",
 		})
 
+	status = frappe.get_cached_doc("AI Settings")
+	if status.get("enable_budget"):
+		from ai_interface.services import budget as budget_service
+
+		for period in budget_service.get_status().get("periods", []):
+			if period["pct"] >= 100:
+				out.append({
+					"severity": "critical",
+					"title": "{} budget exhausted — {}% of cap spent".format(
+						period["period"].title(), int(period["pct"])
+					),
+					"detail": "{} of {}. Calls are being {}.".format(
+						_money(period["used"], ctx), _money(period["cap"], ctx),
+						"blocked" if status.get("budget_action") == "Block" else "allowed through with a warning",
+					),
+				})
+			elif period["pct"] >= flt(status.get("budget_alert_threshold") or 80):
+				out.append({
+					"severity": "warning",
+					"title": "{} spend at {}% of budget".format(
+						period["period"].title(), int(period["pct"])
+					),
+					"detail": "{} of {} used.".format(
+						_money(period["used"], ctx), _money(period["cap"], ctx)),
+				})
+
+	# Calls that only succeeded because the router fell back are a provider
+	# health signal hiding inside a success rate that looks fine.
+	fell_back = frappe.db.sql(
+		f"""
+		SELECT COUNT(*) FROM `tabAI Call Log` log
+		WHERE {where} AND COALESCE(log.attempts, 1) > 1 AND log.status = 'Completed'
+		""",
+		params,
+	)[0][0]
+	if fell_back:
+		out.append({
+			"severity": "warning",
+			"title": f"{fell_back} calls only succeeded after falling back",
+			"detail": "The first provider in the routing chain failed with a retryable error. "
+			          "Success rate looks healthy because the fallback covered it.",
+		})
+
 	unconverted = _count_unconverted(where, params)
 	if unconverted:
 		out.append({
@@ -610,6 +653,15 @@ def get_insights(filters=None):
 			"detail": "No cost spikes, prompt bloat, repeated calls or failure clusters in this window.",
 		})
 	return out
+
+
+@frappe.whitelist()
+def get_budget_status():
+	"""Spend against the configured caps, for the budget strip."""
+	_check_access()
+	from ai_interface.services import budget
+
+	return budget.get_status()
 
 
 @frappe.whitelist()

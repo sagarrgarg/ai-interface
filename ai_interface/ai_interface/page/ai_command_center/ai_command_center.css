@@ -229,3 +229,64 @@
 .acc-skeleton { background: var(--plane); border-radius: 6px; height: 12px; animation: accpulse 1.4s ease-in-out infinite; }
 @keyframes accpulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.95; } }
 @media (prefers-reduced-motion: reduce) { .acc-skeleton { animation: none; } .acc-bar-fill { transition: none; } }
+
+
+/* ---------- budget strip ---------- */
+.acc-budget {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 12px;
+}
+.acc-budget-item {
+	background: var(--surface-1);
+	border: 1px solid var(--hairline);
+	border-radius: 10px;
+	padding: 12px 14px;
+}
+.acc-budget-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 10px;
+}
+.acc-budget-label {
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--ink-muted);
+	white-space: nowrap;
+}
+.acc-budget-num {
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+	color: var(--ink-1);
+}
+.acc-budget-track {
+	height: 6px;
+	border-radius: 3px;
+	background: var(--grid);
+	overflow: hidden;
+	margin: 9px 0 6px;
+}
+.acc-budget-fill {
+	height: 100%;
+	border-radius: 3px;
+	background: var(--good);
+}
+.acc-budget-foot {
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	color: var(--ink-muted);
+}
+.acc-budget-item.near .acc-budget-fill {
+	background: var(--warning);
+}
+.acc-budget-item.near .acc-budget-foot {
+	color: var(--ink-2);
+}
+.acc-budget-item.over .acc-budget-fill {
+	background: var(--critical);
+}
+.acc-budget-item.over .acc-budget-foot {
+	color: var(--critical);
+}

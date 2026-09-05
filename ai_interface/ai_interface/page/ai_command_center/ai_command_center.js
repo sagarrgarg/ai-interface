@@ -41,6 +41,7 @@ class AICommandCenter {
 			<div class="acc-root">
 				<div class="acc-filters" data-el="filters"></div>
 				<div class="acc-grid">
+					<div class="acc-budget" data-el="budget" hidden></div>
 					<div class="acc-kpis" data-el="kpis"></div>
 
 					<div class="acc-card" data-el="insights-card">
@@ -202,12 +203,52 @@ class AICommandCenter {
 
 	refresh() {
 		this.load_summary();
+		this.load_budget();
 		this.load_insights();
 		this.load_timeseries();
 		this.load_attribution();
 		this.load_reliability();
 		this.load_failures();
 		this.load_filter_options();
+	}
+
+	/* ---------------- budget strip ---------------- */
+
+	async load_budget() {
+		const d = await this.call("get_budget_status");
+		if (!d || !d.enabled || !(d.periods || []).length) {
+			this.el.budget.attr("hidden", true).empty();
+			return;
+		}
+
+		const bars = d.periods
+			.map((p) => {
+				// Over-budget is a state, not a longer bar: the fill caps at 100%
+				// and the figure carries the overage.
+				const width = Math.min(p.pct, 100);
+				const state = p.pct >= 100 ? "over" : p.pct >= 80 ? "near" : "ok";
+				const label = p.period === "daily" ? __("Spent today") : __("Spent this month");
+				const note =
+					p.pct >= 100
+						? " · " + (d.action === "Block" ? __("calls blocked") : __("warning only"))
+						: "";
+				return `
+					<div class="acc-budget-item ${state}">
+						<div class="acc-budget-head">
+							<span class="acc-budget-label">${label}</span>
+							<span class="acc-budget-num">${frappe.utils.escape_html(
+								this.money(p.used, 2)
+							)} / ${frappe.utils.escape_html(this.money(p.cap, 2))}</span>
+						</div>
+						<div class="acc-budget-track">
+							<div class="acc-budget-fill" style="width:${width}%"></div>
+						</div>
+						<div class="acc-budget-foot">${Math.round(p.pct)}%${note}</div>
+					</div>`;
+			})
+			.join("");
+
+		this.el.budget.removeAttr("hidden").html(bars);
 	}
 
 	/* ---------------- KPI strip ---------------- */

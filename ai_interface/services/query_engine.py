@@ -19,6 +19,7 @@ def query(
 	reference_name: str | None = None,
 	module: str | None = None,
 	action: str | None = None,
+	needs: list[str] | None = None,
 	**kwargs,
 ) -> str:
 	"""Natural language query against ERPNext data.
@@ -52,6 +53,7 @@ def query(
 		reference_name=reference_name,
 		module=module,
 		action=action or "answer_synthesis",
+		needs=needs,
 		**kwargs,
 	)
 

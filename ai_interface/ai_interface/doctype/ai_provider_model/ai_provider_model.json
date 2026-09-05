@@ -1,108 +1,116 @@
 {
- "actions": [],
- "creation": "2026-05-01 00:00:00.000000",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "model_id",
-  "label",
-  "enabled",
-  "column_break_1",
-  "supports_vision",
-  "supports_tools",
-  "context_window",
-  "section_pricing",
-  "cost_per_input_token",
-  "cost_per_output_token",
-  "pricing_source"
- ],
- "fields": [
-  {
-   "fieldname": "model_id",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Model ID",
-   "reqd": 1
-  },
-  {
-   "fieldname": "label",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Label"
-  },
-  {
-   "fieldname": "enabled",
-   "fieldtype": "Check",
-   "label": "Enabled",
-   "default": "1",
-   "in_list_view": 1,
-   "description": "Cleared automatically when the vendor stops returning this model. Past call logs keep costing against it."
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "0",
-   "fieldname": "supports_vision",
-   "fieldtype": "Check",
-   "in_list_view": 0,
-   "label": "Supports Vision"
-  },
-  {
-   "fieldname": "supports_tools",
-   "fieldtype": "Check",
-   "label": "Supports Tools"
-  },
-  {
-   "fieldname": "context_window",
-   "fieldtype": "Int",
-   "label": "Context Window"
-  },
-  {
-   "fieldname": "section_pricing",
-   "fieldtype": "Section Break",
-   "label": "Pricing"
-  },
-  {
-   "default": "0",
-   "fieldname": "cost_per_input_token",
-   "fieldtype": "Float",
-   "in_list_view": 1,
-   "label": "Cost per Input Token",
-   "precision": "9",
-   "description": "Cost of one token in the provider billing currency."
-  },
-  {
-   "default": "0",
-   "fieldname": "cost_per_output_token",
-   "fieldtype": "Float",
-   "in_list_view": 1,
-   "label": "Cost per Output Token",
-   "precision": "9",
-   "description": "Cost of one token in the provider billing currency."
-  },
-  {
-   "fieldname": "pricing_source",
-   "fieldtype": "Select",
-   "label": "Pricing Source",
-   "options": "\nManual\nCatalog\nUnpriced",
-   "read_only": 1,
-   "description": "Manual rates are never overwritten by a re-fetch."
-  }
- ],
- "index_web_pages_for_search": 0,
- "istable": 1,
- "links": [],
- "modified": "2026-05-01 00:00:00.000000",
- "modified_by": "Administrator",
- "module": "Ai Interface",
- "name": "AI Provider Model",
- "owner": "Administrator",
- "permissions": [],
- "sort_field": "creation",
- "sort_order": "DESC",
- "states": [],
- "track_changes": 0
+  "actions": [],
+  "creation": "2026-05-01 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "model_id",
+    "label",
+    "enabled",
+    "column_break_1",
+    "supports_vision",
+    "supports_tools",
+    "context_window",
+    "priority",
+    "section_pricing",
+    "cost_per_input_token",
+    "cost_per_output_token",
+    "pricing_source"
+  ],
+  "fields": [
+    {
+      "fieldname": "model_id",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Model ID",
+      "reqd": 1
+    },
+    {
+      "fieldname": "label",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Label"
+    },
+    {
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Enabled",
+      "default": "1",
+      "in_list_view": 1,
+      "description": "Cleared automatically when the vendor stops returning this model. Past call logs keep costing against it."
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "0",
+      "fieldname": "supports_vision",
+      "fieldtype": "Check",
+      "in_list_view": 0,
+      "label": "Supports Vision"
+    },
+    {
+      "fieldname": "supports_tools",
+      "fieldtype": "Check",
+      "label": "Supports Tools"
+    },
+    {
+      "fieldname": "context_window",
+      "fieldtype": "Int",
+      "label": "Context Window"
+    },
+    {
+      "default": "0",
+      "fieldname": "priority",
+      "fieldtype": "Int",
+      "label": "Priority",
+      "description": "Lower is preferred when the router auto-picks a model. Ties break on cost."
+    },
+    {
+      "fieldname": "section_pricing",
+      "fieldtype": "Section Break",
+      "label": "Pricing"
+    },
+    {
+      "default": "0",
+      "fieldname": "cost_per_input_token",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Cost per Input Token",
+      "precision": "9",
+      "description": "Cost of one token in the provider billing currency."
+    },
+    {
+      "default": "0",
+      "fieldname": "cost_per_output_token",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Cost per Output Token",
+      "precision": "9",
+      "description": "Cost of one token in the provider billing currency."
+    },
+    {
+      "fieldname": "pricing_source",
+      "fieldtype": "Select",
+      "label": "Pricing Source",
+      "options": "\nManual\nCatalog\nUnpriced",
+      "read_only": 1,
+      "description": "Manual rates are never overwritten by a re-fetch."
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-05-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Provider Model",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
 }

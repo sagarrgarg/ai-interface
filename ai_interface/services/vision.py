@@ -19,6 +19,7 @@ def extract(
 	reference_name: str | None = None,
 	module: str | None = None,
 	action: str | None = None,
+	needs: list[str] | None = None,
 	**kwargs,
 ) -> str:
 	"""Extract information from an image or PDF using vision.
@@ -42,6 +43,7 @@ def extract(
 			reference_name=reference_name,
 			module=module,
 			action=action,
+			needs=needs,
 			**kwargs,
 		)
 	finally:

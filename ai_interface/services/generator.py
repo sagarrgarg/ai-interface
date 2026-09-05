@@ -16,6 +16,7 @@ def generate(
 	reference_name: str | None = None,
 	module: str | None = None,
 	action: str | None = None,
+	needs: list[str] | None = None,
 	**kwargs,
 ) -> str:
 	"""General-purpose text generation.
@@ -46,5 +47,6 @@ def generate(
 		reference_name=reference_name,
 		module=module,
 		action=action,
+		needs=needs,
 		**kwargs,
 	)
