@@ -1,0 +1,62 @@
+{
+  "actions": [],
+  "creation": "2026-09-05 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "calling_app",
+    "daily_budget",
+    "monthly_budget",
+    "budget_action"
+  ],
+  "fields": [
+    {
+      "fieldname": "calling_app",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Calling App",
+      "reqd": 1,
+      "columns": 3
+    },
+    {
+      "default": "0",
+      "fieldname": "daily_budget",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Daily Budget",
+      "columns": 2,
+      "description": "0 = no daily cap for this app."
+    },
+    {
+      "default": "0",
+      "fieldname": "monthly_budget",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Monthly Budget",
+      "columns": 2,
+      "description": "0 = no monthly cap for this app."
+    },
+    {
+      "fieldname": "budget_action",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "On Exceed",
+      "options": "\nWarn\nBlock",
+      "columns": 2,
+      "description": "Blank falls back to the global setting."
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-09-05 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI App Budget",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}

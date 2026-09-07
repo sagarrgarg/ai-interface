@@ -14,13 +14,42 @@
     "section_vision",
     "max_pdf_pages",
     "section_logging",
-    "enable_logging"
+    "enable_logging",
+    "section_currency",
+    "base_currency",
+    "section_routing",
+    "routing_rules",
+    "enable_fallback",
+    "section_budget",
+    "enable_budget",
+    "daily_budget",
+    "monthly_budget",
+    "column_break_budget",
+    "budget_action",
+    "budget_alert_threshold",
+    "section_app_budget",
+    "app_budgets",
+    "failure_threshold",
+    "section_assistant",
+    "enable_assistant",
+    "per_user_daily_budget",
+    "assistant_show_query",
+    "assistant_max_doctypes",
+    "assistant_denied_doctypes",
+    "section_assistant_limits",
+    "assistant_rate_per_minute",
+    "assistant_rate_per_hour",
+    "column_break_limits",
+    "max_messages_per_conversation",
+    "conversation_retention_days",
+    "enable_health_checks",
+    "health_check_idle_minutes"
   ],
   "fields": [
     {
       "fieldname": "intro_html",
       "fieldtype": "HTML",
-      "options": "<div class=\"alert alert-info\" style=\"margin-bottom:15px\"><b>How this works.</b> Consumer apps (Excom, DocPulse, BNS, etc.) call <code>generate()</code>, <code>extract()</code>, or <code>query()</code> without naming a provider. The dispatcher resolves: <b>caller override → template override → these defaults</b>. Set sensible defaults here once; consumers stay provider-agnostic.<br><br><b>Quick recommended setup:</b><br>1. Create an <b>AI Provider</b> (Claude Code for Pro plan, or Anthropic with an API key)<br>2. Click <b>Fetch Models</b> in the provider doc<br>3. Set <b>Default Provider</b> + <b>Default Model</b> below<br>4. Leave timeouts/tokens at defaults unless you have a reason to change<br>5. Keep <b>Enable Logging</b> on — needed for cost tracking and async result delivery</div>"
+      "options": "<div class=\"alert alert-info\" style=\"margin-bottom:15px\"><b>How this works.</b> Consumer apps (Excom, DocPulse, BNS, etc.) call <code>generate()</code>, <code>extract()</code>, or <code>query()</code> without naming a provider. The dispatcher resolves: <b>caller override \u2192 template override \u2192 these defaults</b>. Set sensible defaults here once; consumers stay provider-agnostic.<br><br><b>Quick recommended setup:</b><br>1. Create an <b>AI Provider</b> (Claude Code for Pro plan, or Anthropic with an API key)<br>2. Click <b>Fetch Models</b> in the provider doc<br>3. Set <b>Default Provider</b> + <b>Default Model</b> below<br>4. Leave timeouts/tokens at defaults unless you have a reason to change<br>5. Keep <b>Enable Logging</b> on \u2014 needed for cost tracking and async result delivery</div>"
     },
     {
       "fieldname": "default_provider",
@@ -28,7 +57,7 @@
       "label": "Default Provider",
       "options": "AI Provider",
       "reqd": 1,
-      "description": "Which AI Provider runs calls when the consumer app doesn't specify one. Pick the cheapest provider that meets your latency + capability needs. For Claude Pro/Max subscribers: use a provider with type 'Anthropic' + Auth Token (OAuth) — fastest path. For pay-as-you-go: 'Anthropic' + API Key. For zero-config local routing: 'Claude Code' (shells out to CLI, slower)."
+      "description": "Which AI Provider runs calls when the consumer app doesn't specify one. Pick the cheapest provider that meets your latency + capability needs. For Claude Pro/Max subscribers: use a provider with type 'Anthropic' + Auth Token (OAuth) \u2014 fastest path. For pay-as-you-go: 'Anthropic' + API Key. For zero-config local routing: 'Claude Code' (shells out to CLI, slower)."
     },
     {
       "fieldname": "default_model",
@@ -77,7 +106,212 @@
       "fieldname": "enable_logging",
       "fieldtype": "Check",
       "label": "Enable Call Logging",
-      "description": "When ON: every call writes an AI Call Log row (prompt, response, tokens, cost, latency, status). Required for async delivery — consumers poll the log by name. Required for cost auditing. Required for debugging failures. Turn OFF only if you have a strict data-retention rule against storing prompts/responses. Logs auto-clear after 90 days (see hooks.py default_log_clearing_doctypes)."
+      "description": "When ON: every call writes an AI Call Log row (prompt, response, tokens, cost, latency, status). Required for async delivery \u2014 consumers poll the log by name. Required for cost auditing. Required for debugging failures. Turn OFF only if you have a strict data-retention rule against storing prompts/responses. Logs auto-clear after 90 days (see hooks.py default_log_clearing_doctypes)."
+    },
+    {
+      "fieldname": "section_currency",
+      "fieldtype": "Section Break",
+      "label": "Currency"
+    },
+    {
+      "fieldname": "base_currency",
+      "fieldtype": "Link",
+      "label": "Base Currency",
+      "options": "Currency",
+      "reqd": 1,
+      "description": "Every call is converted to this currency once, at call time, so spend from providers that bill in different currencies can be totalled honestly. Changing it does not rewrite past calls. The dashboard can display any currency you like on top of it."
+    },
+    {
+      "fieldname": "section_routing",
+      "fieldtype": "Section Break",
+      "label": "Routing",
+      "description": "Callers ask for a capability, not a model. Rules are matched most-specific first (app + function, then function, then catch-all); later rules by priority act as fallbacks when a provider is rate-limited, timing out or erroring."
+    },
+    {
+      "fieldname": "routing_rules",
+      "fieldtype": "Table",
+      "label": "Routing Rules",
+      "options": "AI Routing Rule"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_fallback",
+      "fieldtype": "Check",
+      "label": "Fall Back to Next Rule on Retryable Failure",
+      "description": "Rate limits, timeouts and 5xx only. Auth and configuration errors never retry."
+    },
+    {
+      "fieldname": "section_budget",
+      "fieldtype": "Section Break",
+      "label": "Spend Caps"
+    },
+    {
+      "default": "0",
+      "fieldname": "enable_budget",
+      "fieldtype": "Check",
+      "label": "Enforce Spend Caps"
+    },
+    {
+      "default": "0",
+      "fieldname": "daily_budget",
+      "fieldtype": "Currency",
+      "label": "Daily Budget",
+      "options": "base_currency",
+      "depends_on": "enable_budget",
+      "description": "0 = no daily cap."
+    },
+    {
+      "default": "0",
+      "fieldname": "monthly_budget",
+      "fieldtype": "Currency",
+      "label": "Monthly Budget",
+      "options": "base_currency",
+      "depends_on": "enable_budget",
+      "description": "0 = no monthly cap. Calendar month, in base currency."
+    },
+    {
+      "fieldname": "column_break_budget",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Warn",
+      "fieldname": "budget_action",
+      "fieldtype": "Select",
+      "label": "On Exceed",
+      "options": "Warn\nBlock",
+      "depends_on": "enable_budget",
+      "description": "Warn logs and notifies but lets calls through. Block refuses them before they cost anything."
+    },
+    {
+      "default": "80",
+      "fieldname": "budget_alert_threshold",
+      "fieldtype": "Int",
+      "label": "Alert At (%)",
+      "depends_on": "enable_budget",
+      "description": "Notify System Managers once spend crosses this share of a cap."
+    },
+    {
+      "fieldname": "section_app_budget",
+      "fieldtype": "Section Break",
+      "label": "Per-App Caps",
+      "depends_on": "enable_budget",
+      "description": "Optional. Stops one app draining the budget the others need."
+    },
+    {
+      "fieldname": "app_budgets",
+      "fieldtype": "Table",
+      "label": "App Budgets",
+      "options": "AI App Budget",
+      "depends_on": "enable_budget"
+    },
+    {
+      "default": "3",
+      "fieldname": "failure_threshold",
+      "fieldtype": "Int",
+      "label": "Mark Provider Down After",
+      "description": "Consecutive failures before a provider is treated as Down."
+    },
+    {
+      "fieldname": "section_assistant",
+      "fieldtype": "Section Break",
+      "label": "Site Assistant",
+      "description": "The chat assistant answers questions about this site by querying it as the logged-in user, so it can never reveal data that user could not already open."
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_assistant",
+      "fieldtype": "Check",
+      "label": "Enable Site Assistant"
+    },
+    {
+      "default": "0.10",
+      "fieldname": "per_user_daily_budget",
+      "fieldtype": "Currency",
+      "label": "Per-User Daily Budget",
+      "options": "base_currency",
+      "depends_on": "enable_assistant",
+      "description": "Cap on one user\u2019s AI spend per day, in base currency. 0 = no per-user cap."
+    },
+    {
+      "default": "1",
+      "fieldname": "assistant_show_query",
+      "fieldtype": "Check",
+      "label": "Show the Query That Ran",
+      "depends_on": "enable_assistant",
+      "description": "Displays the doctype, filters and aggregate used, so an answer can be checked rather than trusted."
+    },
+    {
+      "default": "12",
+      "fieldname": "assistant_max_doctypes",
+      "fieldtype": "Int",
+      "label": "Doctypes Sent Per Question",
+      "depends_on": "enable_assistant",
+      "description": "How many candidate doctypes get full field detail in the prompt. Higher is more accurate and more expensive."
+    },
+    {
+      "fieldname": "assistant_denied_doctypes",
+      "fieldtype": "Small Text",
+      "label": "Never Query These Doctypes",
+      "depends_on": "enable_assistant",
+      "description": "Comma or newline separated. Applied on top of Frappe permissions, not instead of them."
+    },
+    {
+      "fieldname": "section_assistant_limits",
+      "fieldtype": "Section Break",
+      "label": "Assistant Limits",
+      "depends_on": "enable_assistant",
+      "description": "Spend caps stop cost. These stop volume \u2014 a stuck script or an impatient user can burn a daily budget in seconds."
+    },
+    {
+      "default": "6",
+      "fieldname": "assistant_rate_per_minute",
+      "fieldtype": "Int",
+      "label": "Questions Per Minute",
+      "depends_on": "enable_assistant",
+      "description": "Per user. 0 = no limit."
+    },
+    {
+      "default": "60",
+      "fieldname": "assistant_rate_per_hour",
+      "fieldtype": "Int",
+      "label": "Questions Per Hour",
+      "depends_on": "enable_assistant",
+      "description": "Per user. 0 = no limit."
+    },
+    {
+      "fieldname": "column_break_limits",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "40",
+      "fieldname": "max_messages_per_conversation",
+      "fieldtype": "Int",
+      "label": "Messages Per Conversation",
+      "depends_on": "enable_assistant",
+      "description": "Oldest turns are dropped past this. Keeps a long thread from growing without bound."
+    },
+    {
+      "default": "30",
+      "fieldname": "conversation_retention_days",
+      "fieldtype": "Int",
+      "label": "Keep Conversations For (Days)",
+      "depends_on": "enable_assistant",
+      "description": "Inactive conversations are deleted after this. 0 = keep forever."
+    },
+    {
+      "default": "0",
+      "fieldname": "enable_health_checks",
+      "fieldtype": "Check",
+      "label": "Ping Providers Hourly",
+      "description": "A health check is a real, billed call. Off by default \u2014 with it on, a provider that dies overnight is known before someone hits it, rather than after."
+    },
+    {
+      "default": "60",
+      "fieldname": "health_check_idle_minutes",
+      "fieldtype": "Int",
+      "label": "Only Ping After Idle (Minutes)",
+      "depends_on": "enable_health_checks",
+      "description": "A provider that answered a real call more recently than this is skipped \u2014 no point paying to ask what traffic already proved."
     }
   ],
   "index_web_pages_for_search": 0,

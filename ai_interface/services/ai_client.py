@@ -4,9 +4,11 @@ import traceback
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 from ai_interface.providers import get_provider
 from ai_interface.providers.base import ProviderResponse
+from ai_interface.services import budget, router
 
 
 def call_ai(
@@ -23,20 +25,53 @@ def call_ai(
 	user: str | None = None,
 	max_tokens: int | None = None,
 	temperature: float = 0.7,
+	reference_doctype: str | None = None,
+	reference_name: str | None = None,
+	module: str | None = None,
+	action: str | None = None,
+	needs: list[str] | None = None,
 ) -> str:
 	"""Central AI call dispatcher.
 
 	Async (default): Creates AI Call Log, enqueues execution, returns log name.
 	Sync (sync=True): Executes inline, creates log, returns response text directly.
+
+	Attribution (`reference_doctype`, `reference_name`, `module`, `action`) is
+	optional but strongly recommended — it is what powers cost and failure
+	breakdowns in the AI Command Center.
+
+	`needs` states capabilities rather than a model name — e.g. ["vision"],
+	["tools"] — so the call keeps working when the configured provider changes.
+	Passing `images` implies "vision" without saying so.
 	"""
 	settings = frappe.get_single("AI Settings")
 	user = user or frappe.session.user
 
-	resolved_provider, resolved_model, provider_doc = _resolve_provider_model(
-		provider, model, template, settings
-	)
-
 	rendered_prompt = _render_prompt(prompt, template, context)
+
+	if not module and reference_doctype:
+		module = _module_for_doctype(reference_doctype)
+
+	# Refused before anything is queued, so a blocked call costs nothing.
+	budget.check(settings, calling_app, user)
+
+	requirements = list(needs or [])
+	if images and "vision" not in requirements:
+		requirements.append("vision")
+
+	chain = router.build_chain(
+		settings,
+		provider=provider,
+		model=model,
+		template=template,
+		function_type=function_type,
+		calling_app=calling_app,
+		needs=requirements,
+		prompt=rendered_prompt,
+	)
+	resolved_provider = chain[0]["provider"]
+	resolved_model = chain[0]["model"]
+	provider_doc = frappe.get_cached_doc("AI Provider", resolved_provider)
 
 	log = _create_call_log(
 		settings,
@@ -49,6 +84,12 @@ def call_ai(
 		input_text=rendered_prompt,
 		user=user,
 		is_sync=sync,
+		reference_doctype=reference_doctype,
+		reference_name=reference_name,
+		module=module,
+		action=action,
+		currency=provider_doc.currency or "USD",
+		base_currency=_base_currency(settings),
 	)
 
 	if sync:
@@ -61,6 +102,7 @@ def call_ai(
 			max_tokens=max_tokens or settings.max_output_tokens or 4096,
 			temperature=temperature,
 			timeout=settings.api_call_timeout or 120,
+			chain=chain,
 		)
 		log.reload()
 		if log.status == "Failed":
@@ -77,6 +119,7 @@ def call_ai(
 		max_tokens=max_tokens or settings.max_output_tokens or 4096,
 		temperature=temperature,
 		timeout=settings.api_call_timeout or 120,
+		chain=chain,
 		queue="default",
 		is_async=True,
 	)
@@ -92,124 +135,151 @@ def _execute_ai_call(
 	max_tokens: int,
 	temperature: float,
 	timeout: int,
+	chain: list[dict] | None = None,
 ):
-	"""Background worker function. Executes the actual provider API call."""
+	"""Background worker. Walks the routing chain until one provider answers.
+
+	Only retryable failures move to the next entry — a rate limit, a timeout, a
+	5xx. Auth and configuration errors stop immediately, because retrying a bad
+	key against another provider just fails again more slowly.
+	"""
 	log = frappe.get_doc("AI Call Log", log_name)
 	log.db_set("status", "Running")
 	frappe.db.commit()
 
-	provider_doc = frappe.get_doc("AI Provider", provider_doc_name)
-	credential, auth_type = provider_doc.get_credential()
-	provider_instance = get_provider(provider_doc.provider_type)
+	attempts = chain or [{"provider": provider_doc_name, "model": model}]
+	history = []
 
-	start_time = time.time()
-	try:
-		messages = [{"role": "user", "content": rendered_prompt}]
-
-		if images:
-			if hasattr(provider_instance, "vision_from_paths"):
-				file_paths = _resolve_file_paths(images)
-				response: ProviderResponse = provider_instance.vision_from_paths(
-					messages=messages,
-					file_paths=file_paths,
-					model=model,
-					max_tokens=max_tokens,
-					timeout=timeout,
-				)
-			else:
-				image_bytes_list = _load_images(images)
-				response: ProviderResponse = provider_instance.vision(
-					messages=messages,
-					images=image_bytes_list,
-					model=model,
-					max_tokens=max_tokens,
-					credential=credential,
-					auth_type=auth_type,
-					api_base_url=provider_doc.api_base_url or "",
-					timeout=timeout,
-				)
-		else:
-			response: ProviderResponse = provider_instance.chat(
-				messages=messages,
-				model=model,
+	for index, step in enumerate(attempts):
+		start_time = time.time()
+		try:
+			provider_doc = frappe.get_doc("AI Provider", step["provider"])
+			response = _attempt_call(
+				provider_doc=provider_doc,
+				rendered_prompt=rendered_prompt,
+				images=images,
+				model=step["model"],
 				max_tokens=max_tokens,
 				temperature=temperature,
-				credential=credential,
-				auth_type=auth_type,
-				api_base_url=provider_doc.api_base_url or "",
 				timeout=timeout,
 			)
+		except Exception as e:
+			latency_ms = int((time.time() - start_time) * 1000)
+			error_type = _classify_error(e)
+			history.append(f"[{step['provider']} / {step['model']}] {error_type}: {e!s}")
+
+			is_last = index == len(attempts) - 1
+			if is_last or error_type not in router.RETRYABLE:
+				log.db_set(
+					{
+						"status": "Failed",
+						"provider": step["provider"],
+						"model": step["model"],
+						"attempts": index + 1,
+						"error_type": error_type,
+						"error_message": "\n".join(history) + f"\n\n{traceback.format_exc()}",
+						"latency_ms": latency_ms,
+					}
+				)
+				frappe.db.commit()
+				_record_failure(step["provider"], e, error_type)
+				frappe.publish_realtime(
+					"ai_call_failed",
+					{"log": log_name, "status": "Failed", "error": str(e)},
+					user=log.user,
+				)
+				return
+			_record_failure(step["provider"], e, error_type)
+			continue
 
 		latency_ms = int((time.time() - start_time) * 1000)
-		cost = _calculate_cost(provider_doc, model, response.input_tokens, response.output_tokens)
+		cost = _calculate_cost(provider_doc, step["model"], response.input_tokens, response.output_tokens)
+		retain_payloads = bool(frappe.db.get_single_value("AI Settings", "enable_logging"))
+
+		base_currency = log.base_currency or _base_currency()
+		rate = _exchange_rate(provider_doc, base_currency)
 
 		log.db_set(
 			{
 				"status": "Completed",
-				"output_text": response.content,
+				"provider": step["provider"],
+				"model": response.model or step["model"],
+				"attempts": index + 1,
+				"output_text": response.content if retain_payloads else "",
 				"input_tokens": response.input_tokens,
 				"output_tokens": response.output_tokens,
 				"cost": cost,
+				# The provider that actually served the call sets the billing
+				# currency. A fallback can hand the work to a vendor billing in
+				# something else, and `cost` is computed from *its* rates — so
+				# carrying the originally-planned currency here would label a
+				# USD amount as rupees.
+				"currency": provider_doc.currency or base_currency,
+				"exchange_rate": rate,
+				"base_cost": cost * rate,
+				"base_currency": base_currency,
 				"latency_ms": latency_ms,
-				"model": response.model,
+				# Kept even on success: a call that only worked on the second
+				# provider is a signal worth seeing, not noise to discard.
+				"error_message": "\n".join(history) or None,
 			}
 		)
 		frappe.db.commit()
+
+		provider_doc.record_health(ok=True)
 
 		frappe.publish_realtime(
 			"ai_call_complete",
 			{"log": log_name, "status": "Completed"},
 			user=log.user,
 		)
+		return
 
-	except Exception as e:
-		latency_ms = int((time.time() - start_time) * 1000)
-		log.db_set(
-			{
-				"status": "Failed",
-				"error_message": f"{e!s}\n\n{traceback.format_exc()}",
-				"latency_ms": latency_ms,
-			}
+
+def _attempt_call(
+	provider_doc,
+	rendered_prompt: str,
+	images: list[str] | None,
+	model: str,
+	max_tokens: int,
+	temperature: float,
+	timeout: int,
+) -> ProviderResponse:
+	"""One provider call. Raises on failure so the caller can decide to retry."""
+	credential, auth_type = provider_doc.get_credential()
+	provider_instance = get_provider(provider_doc.provider_type)
+	messages = [{"role": "user", "content": rendered_prompt}]
+
+	if images:
+		if hasattr(provider_instance, "vision_from_paths"):
+			return provider_instance.vision_from_paths(
+				messages=messages,
+				file_paths=_resolve_file_paths(images),
+				model=model,
+				max_tokens=max_tokens,
+				timeout=timeout,
+			)
+		return provider_instance.vision(
+			messages=messages,
+			images=_load_images(images),
+			model=model,
+			max_tokens=max_tokens,
+			credential=credential,
+			auth_type=auth_type,
+			api_base_url=provider_doc.api_base_url or "",
+			timeout=timeout,
 		)
-		frappe.db.commit()
 
-		frappe.publish_realtime(
-			"ai_call_failed",
-			{"log": log_name, "status": "Failed", "error": str(e)},
-			user=log.user,
-		)
-
-
-def _resolve_provider_model(
-	provider_name: str | None,
-	model: str | None,
-	template_name: str | None,
-	settings,
-) -> tuple:
-	"""Resolve provider and model from caller override → template override → settings default."""
-	resolved_provider = provider_name
-	resolved_model = model
-
-	if template_name:
-		tmpl = frappe.get_doc("AI Prompt Template", template_name)
-		if not resolved_provider and tmpl.provider_override:
-			resolved_provider = tmpl.provider_override
-		if not resolved_model and tmpl.model_override:
-			resolved_model = tmpl.model_override
-
-	if not resolved_provider:
-		resolved_provider = settings.default_provider
-	if not resolved_model:
-		resolved_model = settings.default_model
-
-	if not resolved_provider:
-		frappe.throw(_("No AI provider configured. Set a default in AI Settings."))
-
-	provider_doc = frappe.get_doc("AI Provider", resolved_provider)
-	if not provider_doc.enabled:
-		frappe.throw(_("AI Provider '{0}' is disabled.").format(resolved_provider))
-
-	return resolved_provider, resolved_model, provider_doc
+	return provider_instance.chat(
+		messages=messages,
+		model=model,
+		max_tokens=max_tokens,
+		temperature=temperature,
+		credential=credential,
+		auth_type=auth_type,
+		api_base_url=provider_doc.api_base_url or "",
+		timeout=timeout,
+	)
 
 
 def _render_prompt(
@@ -228,14 +298,74 @@ def _render_prompt(
 
 
 def _create_call_log(settings, **kwargs):
+	"""Always persist the log row — the call contract returns its name, and the
+	worker reloads it by name. `enable_logging` controls payload *retention*
+	(prompt and response bodies), not whether the row exists.
+	"""
+	if not settings.enable_logging:
+		kwargs["input_text"] = ""
+
 	log = frappe.new_doc("AI Call Log")
 	log.update(kwargs)
-	if settings.enable_logging:
-		log.insert(ignore_permissions=True)
-		frappe.db.commit()
-	else:
-		log.name = frappe.generate_hash(length=10)
+	log.insert(ignore_permissions=True)
+	frappe.db.commit()
 	return log
+
+
+def _module_for_doctype(doctype: str) -> str | None:
+	"""Best-effort module resolution from a doctype name."""
+	try:
+		return frappe.db.get_value("DocType", doctype, "module")
+	except Exception:
+		return None
+
+
+# Status code is the vendor-neutral fact; text matching is the fallback for
+# adapters that raise plain exceptions (SDKs, the Claude Code CLI).
+STATUS_ERROR_TYPES = {
+	400: "Provider Error",
+	401: "Auth",
+	403: "Auth",
+	404: "Config Error",
+	408: "Timeout",
+	422: "Provider Error",
+	429: "Rate Limit",
+	500: "Provider Error",
+	502: "Provider Error",
+	503: "Provider Error",
+	504: "Timeout",
+	529: "Rate Limit",
+}
+
+ERROR_PATTERNS = (
+	("Auth", ("authentication", "unauthorized", "invalid api key", "invalid x-api-key", "oauth", "api key")),
+	("Rate Limit", ("rate limit", "too many requests", "overloaded", "quota")),
+	("Timeout", ("timeout", "timed out", "deadline")),
+	("Invalid Response", ("json", "could not parse", "unexpected response", "decode", "no choices")),
+	(
+		"Config Error",
+		("no ai provider", "unknown provider type", "is disabled", "not configured", "no base url"),
+	),
+	("File Error", ("file not found", "access denied", "poppler", "no such file")),
+	("Provider Error", ("api error", "connection", "connection refused", "name resolution")),
+)
+
+
+def _classify_error(exc: "Exception | str") -> str:
+	"""Map a provider failure onto the AI Call Log error_type taxonomy.
+
+	Prefers the HTTP status an adapter attached, because a vendor rewording its
+	error text must not silently reclassify every failure on the dashboard.
+	"""
+	status = getattr(exc, "status_code", None)
+	if status in STATUS_ERROR_TYPES:
+		return STATUS_ERROR_TYPES[status]
+
+	haystack = str(exc or "").lower()
+	for label, needles in ERROR_PATTERNS:
+		if any(n in haystack for n in needles):
+			return label
+	return "Unknown"
 
 
 def _safe_resolve_path(url: str) -> str:
@@ -254,6 +384,48 @@ def _safe_resolve_path(url: str) -> str:
 		frappe.throw(_("File not found: {0}").format(url))
 
 	return resolved
+
+
+DEFAULT_BASE_CURRENCY = "USD"
+
+
+def _base_currency(settings=None) -> str:
+	"""The one currency every call is normalised to for totalling."""
+	value = (settings.base_currency if settings else None) or frappe.db.get_single_value(
+		"AI Settings", "base_currency"
+	)
+	return value or frappe.db.get_default("currency") or DEFAULT_BASE_CURRENCY
+
+
+def _exchange_rate(provider_doc, base_currency: str) -> float:
+	"""Rate from the provider billing currency into the base currency.
+
+	Snapshotted onto each log so a later rate change never rewrites past spend.
+	A rate that cannot be resolved returns 0 rather than a silent 1.0 — treating
+	₹100 as $100 is the exact error this stage exists to prevent, so an
+	unconvertible call is left visibly unconverted for the dashboard to flag.
+	"""
+	from_currency = getattr(provider_doc, "currency", None) or base_currency
+	if from_currency == base_currency:
+		return 1.0
+
+	manual = flt(getattr(provider_doc, "exchange_rate", 0))
+	if manual > 0:
+		return manual
+
+	try:
+		from erpnext.setup.utils import get_exchange_rate
+
+		rate = flt(get_exchange_rate(from_currency, base_currency))
+		if rate > 0:
+			return rate
+	except Exception:
+		frappe.log_error(
+			title="AI Interface: exchange rate lookup failed",
+			message=f"{from_currency} -> {base_currency}\n{traceback.format_exc()}",
+		)
+
+	return 0.0
 
 
 def _load_images(file_urls: list[str]) -> list[bytes]:
@@ -284,3 +456,138 @@ def _calculate_cost(
 				m.cost_per_output_token or 0
 			)
 	return 0.0
+
+
+def _record_failure(provider_name: str, exc: Exception, error_type: str):
+	"""Health bookkeeping must never be the reason a call is lost."""
+	try:
+		frappe.get_doc("AI Provider", provider_name).record_health(
+			ok=False, error=str(exc), error_type=error_type
+		)
+	except Exception:
+		frappe.log_error(title="AI Interface: health update failed", message=provider_name)
+
+
+def test_provider(provider_name: str, action: str = "connection_test") -> dict:
+	"""One minimal live call against a provider, for the Test Connection button.
+
+	Deliberately minimal — a one-word question — because this runs against a
+	real billed account and its job is to answer one thing: does this credential
+	actually work for chat?
+
+	Logged like any other call. It spends real money, and spend the dashboard
+	cannot see is spend nobody can account for.
+	"""
+	provider_doc = frappe.get_doc("AI Provider", provider_name)
+	settings = frappe.get_single("AI Settings")
+
+	# Cheapest enabled model, not merely the first: this runs against a real
+	# billed account and proving the credential works does not need a big model.
+	candidates = sorted(
+		(m for m in provider_doc.models if m.enabled and m.model_id),
+		key=lambda m: (flt(m.priority), flt(m.cost_per_input_token) + flt(m.cost_per_output_token)),
+	)
+	model = candidates[0].model_id if candidates else None
+	if not model:
+		return {
+			"ok": False,
+			"error_type": "Config Error",
+			"error": _("No enabled model on this provider. Fetch or add one first."),
+		}
+
+	base_currency = _base_currency(settings)
+	log = _create_call_log(
+		settings,
+		status="Running",
+		function_type="Generation",
+		calling_app="ai_interface",
+		provider=provider_name,
+		model=model,
+		input_text="Reply with the single word OK.",
+		user=frappe.session.user,
+		is_sync=1,
+		action=action,
+		module="Ai Interface",
+		currency=provider_doc.currency or base_currency,
+		base_currency=base_currency,
+	)
+
+	start = time.time()
+	try:
+		response = _attempt_call(
+			provider_doc=provider_doc,
+			rendered_prompt="Reply with the single word OK.",
+			images=None,
+			model=model,
+			# A ceiling, not a charge: billing is per token generated, so a
+			# generous cap costs nothing on a model that answers in one word,
+			# and is the difference between working and not on a reasoning
+			# model that thinks before it replies.
+			max_tokens=2048,
+			temperature=0,
+			timeout=min(settings.api_call_timeout or 120, 60),
+		)
+	except Exception as e:
+		error_type = _classify_error(e)
+		log.db_set({
+			"status": "Failed",
+			"error_type": error_type,
+			"error_message": str(e)[:2000],
+			"latency_ms": int((time.time() - start) * 1000),
+		})
+		frappe.db.commit()
+		provider_doc.record_health(ok=False, error=str(e), error_type=error_type)
+		return {"ok": False, "error_type": error_type, "error": str(e)[:500], "model": model}
+
+	latency_ms = int((time.time() - start) * 1000)
+	cost = _calculate_cost(provider_doc, model, response.input_tokens, response.output_tokens)
+	rate = _exchange_rate(provider_doc, base_currency)
+
+	log.db_set({
+		"status": "Completed",
+		"model": response.model or model,
+		"input_tokens": response.input_tokens,
+		"output_tokens": response.output_tokens,
+		"cost": cost,
+		"exchange_rate": rate,
+		"base_cost": cost * rate,
+		"latency_ms": latency_ms,
+	})
+	frappe.db.commit()
+
+	provider_doc.record_health(ok=True)
+	return {
+		"ok": True,
+		"model": response.model or model,
+		"latency_ms": latency_ms,
+		"tokens": (response.input_tokens or 0) + (response.output_tokens or 0),
+		"reply": (response.content or "").strip()[:120],
+		"log": log.name,
+	}
+
+
+def check_provider_health():
+	"""Scheduled: ping providers that traffic has not already proven alive.
+
+	Opt-in, because every ping is a billed call. Without it a provider that
+	dies overnight still reads Healthy until someone hits it — the counters
+	only move when a real call runs.
+	"""
+	settings = frappe.get_single("AI Settings")
+	if not settings.get("enable_health_checks"):
+		return
+
+	idle_minutes = int(settings.get("health_check_idle_minutes") or 60)
+	cutoff = frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=-idle_minutes)
+
+	for name in frappe.get_all("AI Provider", filters={"enabled": 1}, pluck="name"):
+		last_success = frappe.db.get_value("AI Provider", name, "last_success")
+		# Real traffic is better evidence than a synthetic ping, and free.
+		if last_success and frappe.utils.get_datetime(last_success) > cutoff:
+			continue
+		try:
+			test_provider(name, action="health_check")
+		except Exception:
+			frappe.log_error(
+				title="AI Interface: scheduled health check failed", message=name
+			)
