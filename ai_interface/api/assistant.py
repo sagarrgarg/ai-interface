@@ -5,12 +5,16 @@ convenience over data the person could already open, not a way around the
 permissions that decide what they may open.
 """
 
+import json
+
 import frappe
 from frappe import _
 
 from ai_interface.services import query_engine
 
 ROLES = {"System Manager", "AI User"}
+MAX_QUESTION = 1000
+CONVERSATION = "AI Chat Conversation"
 
 
 def _check_access():
@@ -21,9 +25,22 @@ def _check_access():
 		frappe.throw(_("You need the AI User role to use the assistant."), frappe.PermissionError)
 
 
+def _load(conversation: str | None):
+	"""Fetch a conversation the caller owns, or start a new one."""
+	if conversation and frappe.db.exists(CONVERSATION, conversation):
+		doc = frappe.get_doc(CONVERSATION, conversation)
+		if doc.user != frappe.session.user and "System Manager" not in frappe.get_roles():
+			frappe.throw(_("This conversation belongs to someone else."), frappe.PermissionError)
+		return doc
+
+	doc = frappe.new_doc(CONVERSATION)
+	doc.user = frappe.session.user
+	return doc
+
+
 @frappe.whitelist()
-def ask(question: str, history=None) -> dict:
-	"""Answer a question about this site.
+def ask(question: str, conversation: str | None = None) -> dict:
+	"""Answer a question about this site, in the context of a conversation.
 
 	Returns the answer together with the query behind it, so a reader can check
 	the result rather than take it on trust.
@@ -33,24 +50,49 @@ def ask(question: str, history=None) -> dict:
 	question = (question or "").strip()
 	if not question:
 		frappe.throw(_("Ask a question first."))
-	if len(question) > 1000:
+	if len(question) > MAX_QUESTION:
 		frappe.throw(_("That question is too long. Try a shorter one."))
 
-	history = _parse_history(history)
+	doc = _load(conversation)
+	history = doc.history() if not doc.is_new() else []
+
+	doc.append("messages", {"role": "User", "content": question})
 
 	try:
 		result = query_engine.answer(question, user=frappe.session.user, history=history)
 	except query_engine.QueryRefused as e:
 		# An expected refusal — no access, no usable query — is an answer, not a
-		# crash. The UI should show the reason rather than a stack trace.
-		return {"ok": False, "answer": str(e), "query": None}
+		# crash. Recorded in the conversation so the thread stays coherent.
+		message = str(e)
+		doc.append("messages", {"role": "Assistant", "content": message})
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+		return {"ok": False, "answer": message, "query": None, "conversation": doc.name}
+	except Exception as e:
+		frappe.log_error(title="AI Interface: assistant failed", message=frappe.get_traceback())
+		# The conversation is not saved here: a half-written turn is worse than
+		# none, and the question is still in the user's input box.
+		return {"ok": False, "answer": _("Something went wrong: {0}").format(str(e)[:300]),
+		        "query": None, "conversation": conversation}
 
 	show_query = bool(frappe.db.get_single_value("AI Settings", "assistant_show_query"))
+
+	doc.append("messages", {
+		"role": "Assistant",
+		"content": result["answer"],
+		"query_json": json.dumps(result["query"], default=str, indent=2),
+		"row_count": result["row_count"],
+	})
+	doc.save(ignore_permissions=True)
+	frappe.db.commit()
+
 	return {
 		"ok": True,
 		"answer": result["answer"],
 		"query": result["query"] if show_query else None,
 		"row_count": result["row_count"],
+		"conversation": doc.name,
+		"title": doc.title,
 	}
 
 
@@ -60,27 +102,55 @@ def get_config() -> dict:
 	enabled = bool(frappe.db.get_single_value("AI Settings", "enable_assistant"))
 	permitted = bool(ROLES & set(frappe.get_roles(frappe.session.user)))
 	return {
-		"enabled": enabled and permitted,
+		"enabled": bool(enabled and permitted),
 		"show_query": bool(frappe.db.get_single_value("AI Settings", "assistant_show_query")),
 		"user": frappe.session.user,
+		"greeting": _("Ask me anything about this site."),
 	}
 
 
-def _parse_history(history):
-	if not history:
-		return []
-	if isinstance(history, str):
-		import json
+@frappe.whitelist()
+def get_conversation(conversation: str) -> dict:
+	"""Reload a thread, so the panel survives a page reload."""
+	_check_access()
+	doc = _load(conversation)
+	if doc.is_new():
+		return {"conversation": None, "messages": []}
 
-		try:
-			history = json.loads(history)
-		except (json.JSONDecodeError, ValueError):
-			return []
-	if not isinstance(history, list):
-		return []
-	# Only the last few turns, and only the two keys the prompt uses.
-	return [
-		{"question": str(t.get("question", ""))[:500], "answer": str(t.get("answer", ""))[:500]}
-		for t in history[-6:]
-		if isinstance(t, dict)
-	]
+	return {
+		"conversation": doc.name,
+		"title": doc.title,
+		"messages": [
+			{
+				"role": m.role,
+				"content": m.content,
+				"query": json.loads(m.query_json) if m.query_json else None,
+				"row_count": m.row_count,
+			}
+			for m in doc.messages
+		],
+	}
+
+
+@frappe.whitelist()
+def list_conversations(limit: int = 15) -> list[dict]:
+	"""The caller's own recent threads, newest first."""
+	_check_access()
+	return frappe.get_all(
+		CONVERSATION,
+		filters={"user": frappe.session.user},
+		fields=["name", "title", "last_active", "message_count"],
+		order_by="last_active desc",
+		limit_page_length=int(limit),
+	)
+
+
+@frappe.whitelist()
+def delete_conversation(conversation: str) -> dict:
+	_check_access()
+	doc = _load(conversation)
+	if doc.is_new():
+		return {"ok": True}
+	frappe.delete_doc(CONVERSATION, doc.name, ignore_permissions=True)
+	frappe.db.commit()
+	return {"ok": True}
