@@ -180,6 +180,21 @@ class OpenAICompatibleProvider(BaseProvider):
 		if isinstance(content, list):
 			content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
 
+		# A reasoning model writes "reasoning_content" first and only fills
+		# "content" once it has finished thinking. Hit the token ceiling before
+		# that and the reply is empty — silently returning "" would leave the
+		# caller with nothing and no idea why, so name the cause.
+		if not content and choices[0].get("finish_reason") == "length":
+			if message.get("reasoning_content"):
+				raise ProviderHTTPError(
+					f"{requested_model} used its entire max_tokens budget on reasoning and "
+					"produced no answer. Raise max_tokens for this model."
+				)
+			raise ProviderHTTPError(
+				f"{requested_model} returned an empty response truncated at max_tokens. "
+				"Raise max_tokens."
+			)
+
 		usage = data.get("usage") or {}
 		return ProviderResponse(
 			content=content or "",

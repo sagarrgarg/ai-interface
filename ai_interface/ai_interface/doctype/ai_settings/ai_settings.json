@@ -28,7 +28,8 @@
     "budget_action",
     "budget_alert_threshold",
     "section_app_budget",
-    "app_budgets"
+    "app_budgets",
+    "failure_threshold"
   ],
   "fields": [
     {
@@ -188,6 +189,13 @@
       "label": "App Budgets",
       "options": "AI App Budget",
       "depends_on": "enable_budget"
+    },
+    {
+      "default": "3",
+      "fieldname": "failure_threshold",
+      "fieldtype": "Int",
+      "label": "Mark Provider Down After",
+      "description": "Consecutive failures before a provider is treated as Down."
     }
   ],
   "index_web_pages_for_search": 0,

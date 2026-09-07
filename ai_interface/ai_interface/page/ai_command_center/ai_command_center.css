@@ -290,3 +290,40 @@
 .acc-budget-item.over .acc-budget-foot {
 	color: var(--critical);
 }
+
+
+/* ---------- provider health ---------- */
+.acc-health {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.acc-health-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	background: var(--surface-1);
+	border: 1px solid var(--hairline);
+	border-radius: 999px;
+	padding: 6px 14px 6px 10px;
+}
+.acc-health-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--axis);
+	flex: none;
+}
+.acc-health-item.ok .acc-health-dot { background: var(--good); }
+.acc-health-item.warn .acc-health-dot { background: var(--warning); }
+.acc-health-item.down .acc-health-dot { background: var(--critical); }
+.acc-health-name {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ink-1);
+}
+.acc-health-meta {
+	font-size: 11px;
+	color: var(--ink-muted);
+}
+.acc-health-item.down .acc-health-meta { color: var(--critical); }

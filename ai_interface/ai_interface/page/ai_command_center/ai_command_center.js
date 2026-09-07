@@ -41,6 +41,7 @@ class AICommandCenter {
 			<div class="acc-root">
 				<div class="acc-filters" data-el="filters"></div>
 				<div class="acc-grid">
+					<div class="acc-health" data-el="health" hidden></div>
 					<div class="acc-budget" data-el="budget" hidden></div>
 					<div class="acc-kpis" data-el="kpis"></div>
 
@@ -204,12 +205,48 @@ class AICommandCenter {
 	refresh() {
 		this.load_summary();
 		this.load_budget();
+		this.load_health();
 		this.load_insights();
 		this.load_timeseries();
 		this.load_attribution();
 		this.load_reliability();
 		this.load_failures();
 		this.load_filter_options();
+	}
+
+	/* ---------------- provider health ---------------- */
+
+	async load_health() {
+		const rows = await this.call("get_provider_health");
+		if (!rows || !rows.length) {
+			this.el.health.attr("hidden", true).empty();
+			return;
+		}
+
+		const cls = { Healthy: "ok", Degraded: "warn", Down: "down" };
+		const html = rows
+			.map((r) => {
+				const state = cls[r.status] || "unknown";
+				const when = r.last_success
+					? __("last ok {0}", [frappe.datetime.comment_when(r.last_success)])
+					: __("never called");
+				const detail = r.consecutive_failures
+					? __("{0} consecutive failures", [r.consecutive_failures])
+					: when;
+				return `
+					<div class="acc-health-item ${state}" title="${frappe.utils.escape_html(
+						r.last_error || ""
+					)}">
+						<span class="acc-health-dot"></span>
+						<span class="acc-health-name">${frappe.utils.escape_html(r.name)}</span>
+						<span class="acc-health-meta">${frappe.utils.escape_html(r.status)} · ${detail} · ${
+							r.models
+						} ${__("models")} · ${frappe.utils.escape_html(r.currency || "")}</span>
+					</div>`;
+			})
+			.join("");
+
+		this.el.health.removeAttr("hidden").html(html);
 	}
 
 	/* ---------------- budget strip ---------------- */

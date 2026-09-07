@@ -656,6 +656,29 @@ def get_insights(filters=None):
 
 
 @frappe.whitelist()
+def get_provider_health():
+	"""Which providers are answering, and which are not.
+
+	When calls start failing, the first question is always *which provider*.
+	Answering it from the log means reading tracebacks; this reads the counters
+	the worker already maintains.
+	"""
+	_check_access()
+	rows = frappe.get_all(
+		"AI Provider",
+		fields=[
+			"name", "provider_type", "enabled", "currency", "health_status",
+			"last_success", "last_failure", "consecutive_failures", "last_error",
+		],
+		order_by="enabled desc, name asc",
+	)
+	for r in rows:
+		r["models"] = frappe.db.count("AI Provider Model", {"parent": r["name"], "enabled": 1})
+		r["status"] = r.get("health_status") or "Unknown"
+	return rows
+
+
+@frappe.whitelist()
 def get_budget_status():
 	"""Spend against the configured caps, for the budget strip."""
 	_check_access()

@@ -18,7 +18,15 @@
   "exchange_rate",
   "section_models",
   "fetch_models_button",
-  "models"
+  "models",
+  "section_health",
+  "test_connection_button",
+  "health_status",
+  "column_break_health",
+  "last_success",
+  "last_failure",
+  "consecutive_failures",
+  "last_error"
  ],
  "fields": [
   {
@@ -118,6 +126,55 @@
    "fieldtype": "Table",
    "label": "Models",
    "options": "AI Provider Model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_health",
+   "fieldtype": "Section Break",
+   "label": "Health"
+  },
+  {
+   "fieldname": "test_connection_button",
+   "fieldtype": "Button",
+   "label": "Test Connection"
+  },
+  {
+   "fieldname": "health_status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "read_only": 1,
+   "options": "Unknown\nHealthy\nDegraded\nDown",
+   "default": "Unknown",
+   "in_list_view": 1,
+   "description": "Updated by every call. Test Connection sets it deliberately."
+  },
+  {
+   "fieldname": "column_break_health",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_success",
+   "fieldtype": "Datetime",
+   "label": "Last Success",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_failure",
+   "fieldtype": "Datetime",
+   "label": "Last Failure",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "consecutive_failures",
+   "fieldtype": "Int",
+   "label": "Consecutive Failures",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
    "read_only": 1
   }
  ],

@@ -50,6 +50,64 @@ class AIProvider(Document):
 		return credential, label
 
 	@frappe.whitelist()
+	def test_connection(self):
+		"""Send one minimal real call and report exactly what happened.
+
+		Fetch Models is not a substitute: a credential can list models happily
+		and still be rejected for chat, or belong to an account with no balance.
+		The only way to know a provider works is to use it, so this asks one
+		short question. max_tokens is a ceiling rather than a charge, so the
+		generous cap costs nothing on a model that answers in a word and is what
+		lets a reasoning model finish thinking before it replies.
+		"""
+		frappe.only_for("System Manager")
+
+		from ai_interface.services.ai_client import test_provider
+
+		result = test_provider(self.name)
+
+		if result["ok"]:
+			frappe.msgprint(
+				_("{0} answered in {1}ms using {2} ({3} tokens).").format(
+					self.provider_name, result["latency_ms"], result["model"], result["tokens"]
+				),
+				title=_("Connection OK"),
+				indicator="green",
+			)
+		else:
+			frappe.msgprint(
+				_("{0}<br><br><b>{1}</b>").format(result["error_type"], result["error"]),
+				title=_("Connection failed"),
+				indicator="red",
+			)
+		return result
+
+	def record_health(self, ok: bool, error: str = "", error_type: str = ""):
+		"""Fold one call outcome into the provider health counters.
+
+		Written with db_set rather than save(): this runs on the hot path of
+		every AI call, and a failing provider must not also fail validation.
+		"""
+		now = frappe.utils.now()
+		if ok:
+			self.db_set({
+				"health_status": "Healthy",
+				"last_success": now,
+				"consecutive_failures": 0,
+				"last_error": None,
+			}, update_modified=False)
+			return
+
+		threshold = frappe.db.get_single_value("AI Settings", "failure_threshold") or 3
+		count = (self.consecutive_failures or 0) + 1
+		self.db_set({
+			"health_status": "Down" if count >= threshold else "Degraded",
+			"last_failure": now,
+			"consecutive_failures": count,
+			"last_error": f"{error_type}: {error}"[:500],
+		}, update_modified=False)
+
+	@frappe.whitelist()
 	def fetch_models(self):
 		"""Refresh the model catalog without destroying what the admin curated.
 

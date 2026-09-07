@@ -39,7 +39,10 @@ PROVIDER_TYPES = [
 		"type_name": "Sarvam",
 		"adapter_path": "ai_interface.providers.openai_compatible.OpenAICompatibleProvider",
 		"default_base_url": "https://api.sarvam.ai",
-		"chat_path": "/v2/chat/completions",
+		# /v2 serves more models but is beta-gated per account and returns 400
+		# for keys without access; /v1 works for everyone. Model discovery still
+		# uses /v2/models, which is open.
+		"chat_path": "/v1/chat/completions",
 		"models_path": "/v2/models",
 		"auth_header": "api-subscription-key",
 		"auth_prefix": "",

@@ -182,12 +182,14 @@ def _execute_ai_call(
 					}
 				)
 				frappe.db.commit()
+				_record_failure(step["provider"], e, error_type)
 				frappe.publish_realtime(
 					"ai_call_failed",
 					{"log": log_name, "status": "Failed", "error": str(e)},
 					user=log.user,
 				)
 				return
+			_record_failure(step["provider"], e, error_type)
 			continue
 
 		latency_ms = int((time.time() - start_time) * 1000)
@@ -223,6 +225,8 @@ def _execute_ai_call(
 			}
 		)
 		frappe.db.commit()
+
+		provider_doc.record_health(ok=True)
 
 		frappe.publish_realtime(
 			"ai_call_complete",
@@ -452,3 +456,68 @@ def _calculate_cost(
 				m.cost_per_output_token or 0
 			)
 	return 0.0
+
+
+def _record_failure(provider_name: str, exc: Exception, error_type: str):
+	"""Health bookkeeping must never be the reason a call is lost."""
+	try:
+		frappe.get_doc("AI Provider", provider_name).record_health(
+			ok=False, error=str(exc), error_type=error_type
+		)
+	except Exception:
+		frappe.log_error(title="AI Interface: health update failed", message=provider_name)
+
+
+def test_provider(provider_name: str) -> dict:
+	"""One minimal live call against a provider, for the Test Connection button.
+
+	Deliberately minimal — a one-word question — because this runs against a
+	real billed account and its job is to answer one thing: does this credential
+	actually work for chat?
+	"""
+	provider_doc = frappe.get_doc("AI Provider", provider_name)
+	settings = frappe.get_single("AI Settings")
+
+	# Cheapest enabled model, not merely the first: this runs against a real
+	# billed account and proving the credential works does not need a big model.
+	candidates = sorted(
+		(m for m in provider_doc.models if m.enabled and m.model_id),
+		key=lambda m: (flt(m.priority), flt(m.cost_per_input_token) + flt(m.cost_per_output_token)),
+	)
+	model = candidates[0].model_id if candidates else None
+	if not model:
+		return {
+			"ok": False,
+			"error_type": "Config Error",
+			"error": _("No enabled model on this provider. Fetch or add one first."),
+		}
+
+	start = time.time()
+	try:
+		response = _attempt_call(
+			provider_doc=provider_doc,
+			rendered_prompt="Reply with the single word OK.",
+			images=None,
+			model=model,
+			# A ceiling, not a charge: billing is per token generated, so a
+			# generous cap costs nothing on a model that answers in one word,
+			# and is the difference between working and not on a reasoning
+			# model that thinks before it replies.
+			max_tokens=2048,
+			temperature=0,
+			timeout=min(settings.api_call_timeout or 120, 60),
+		)
+	except Exception as e:
+		error_type = _classify_error(e)
+		provider_doc.record_health(ok=False, error=str(e), error_type=error_type)
+		return {"ok": False, "error_type": error_type, "error": str(e)[:500], "model": model}
+
+	latency_ms = int((time.time() - start) * 1000)
+	provider_doc.record_health(ok=True)
+	return {
+		"ok": True,
+		"model": response.model or model,
+		"latency_ms": latency_ms,
+		"tokens": (response.input_tokens or 0) + (response.output_tokens or 0),
+		"reply": (response.content or "").strip()[:120],
+	}
