@@ -28,6 +28,9 @@ permission_query_conditions = {
 
 
 scheduler_events = {
+	"hourly": [
+		"ai_interface.services.ai_client.check_provider_health",
+	],
 	"daily": [
 		"ai_interface.ai_interface.doctype.ai_chat_conversation.ai_chat_conversation.clear_old_conversations",
 	],

@@ -128,11 +128,21 @@ class TestAskFlow(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		cls._real_answer = query_engine.answer
+		cls._limits = {
+			f: frappe.db.get_single_value("AI Settings", f)
+			for f in ("assistant_rate_per_minute", "assistant_rate_per_hour")
+		}
 		frappe.db.set_single_value("AI Settings", "enable_assistant", 1)
+		# These tests exercise the ask flow, not the limiter, and they ask more
+		# than a real person would in a minute. Rate limiting has its own tests.
+		for f in cls._limits:
+			frappe.db.set_single_value("AI Settings", f, 0)
 
 	@classmethod
 	def tearDownClass(cls):
 		query_engine.answer = cls._real_answer
+		for f, v in cls._limits.items():
+			frappe.db.set_single_value("AI Settings", f, v)
 		super().tearDownClass()
 
 	def tearDown(self):

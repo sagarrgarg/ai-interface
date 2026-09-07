@@ -468,12 +468,15 @@ def _record_failure(provider_name: str, exc: Exception, error_type: str):
 		frappe.log_error(title="AI Interface: health update failed", message=provider_name)
 
 
-def test_provider(provider_name: str) -> dict:
+def test_provider(provider_name: str, action: str = "connection_test") -> dict:
 	"""One minimal live call against a provider, for the Test Connection button.
 
 	Deliberately minimal — a one-word question — because this runs against a
 	real billed account and its job is to answer one thing: does this credential
 	actually work for chat?
+
+	Logged like any other call. It spends real money, and spend the dashboard
+	cannot see is spend nobody can account for.
 	"""
 	provider_doc = frappe.get_doc("AI Provider", provider_name)
 	settings = frappe.get_single("AI Settings")
@@ -492,6 +495,23 @@ def test_provider(provider_name: str) -> dict:
 			"error": _("No enabled model on this provider. Fetch or add one first."),
 		}
 
+	base_currency = _base_currency(settings)
+	log = _create_call_log(
+		settings,
+		status="Running",
+		function_type="Generation",
+		calling_app="ai_interface",
+		provider=provider_name,
+		model=model,
+		input_text="Reply with the single word OK.",
+		user=frappe.session.user,
+		is_sync=1,
+		action=action,
+		module="Ai Interface",
+		currency=provider_doc.currency or base_currency,
+		base_currency=base_currency,
+	)
+
 	start = time.time()
 	try:
 		response = _attempt_call(
@@ -509,10 +529,32 @@ def test_provider(provider_name: str) -> dict:
 		)
 	except Exception as e:
 		error_type = _classify_error(e)
+		log.db_set({
+			"status": "Failed",
+			"error_type": error_type,
+			"error_message": str(e)[:2000],
+			"latency_ms": int((time.time() - start) * 1000),
+		})
+		frappe.db.commit()
 		provider_doc.record_health(ok=False, error=str(e), error_type=error_type)
 		return {"ok": False, "error_type": error_type, "error": str(e)[:500], "model": model}
 
 	latency_ms = int((time.time() - start) * 1000)
+	cost = _calculate_cost(provider_doc, model, response.input_tokens, response.output_tokens)
+	rate = _exchange_rate(provider_doc, base_currency)
+
+	log.db_set({
+		"status": "Completed",
+		"model": response.model or model,
+		"input_tokens": response.input_tokens,
+		"output_tokens": response.output_tokens,
+		"cost": cost,
+		"exchange_rate": rate,
+		"base_cost": cost * rate,
+		"latency_ms": latency_ms,
+	})
+	frappe.db.commit()
+
 	provider_doc.record_health(ok=True)
 	return {
 		"ok": True,
@@ -520,4 +562,32 @@ def test_provider(provider_name: str) -> dict:
 		"latency_ms": latency_ms,
 		"tokens": (response.input_tokens or 0) + (response.output_tokens or 0),
 		"reply": (response.content or "").strip()[:120],
+		"log": log.name,
 	}
+
+
+def check_provider_health():
+	"""Scheduled: ping providers that traffic has not already proven alive.
+
+	Opt-in, because every ping is a billed call. Without it a provider that
+	dies overnight still reads Healthy until someone hits it — the counters
+	only move when a real call runs.
+	"""
+	settings = frappe.get_single("AI Settings")
+	if not settings.get("enable_health_checks"):
+		return
+
+	idle_minutes = int(settings.get("health_check_idle_minutes") or 60)
+	cutoff = frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=-idle_minutes)
+
+	for name in frappe.get_all("AI Provider", filters={"enabled": 1}, pluck="name"):
+		last_success = frappe.db.get_value("AI Provider", name, "last_success")
+		# Real traffic is better evidence than a synthetic ping, and free.
+		if last_success and frappe.utils.get_datetime(last_success) > cutoff:
+			continue
+		try:
+			test_provider(name, action="health_check")
+		except Exception:
+			frappe.log_error(
+				title="AI Interface: scheduled health check failed", message=name
+			)

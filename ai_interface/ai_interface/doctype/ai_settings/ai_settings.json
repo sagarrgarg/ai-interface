@@ -41,7 +41,9 @@
     "assistant_rate_per_hour",
     "column_break_limits",
     "max_messages_per_conversation",
-    "conversation_retention_days"
+    "conversation_retention_days",
+    "enable_health_checks",
+    "health_check_idle_minutes"
   ],
   "fields": [
     {
@@ -295,6 +297,21 @@
       "label": "Keep Conversations For (Days)",
       "depends_on": "enable_assistant",
       "description": "Inactive conversations are deleted after this. 0 = keep forever."
+    },
+    {
+      "default": "0",
+      "fieldname": "enable_health_checks",
+      "fieldtype": "Check",
+      "label": "Ping Providers Hourly",
+      "description": "A health check is a real, billed call. Off by default \u2014 with it on, a provider that dies overnight is known before someone hits it, rather than after."
+    },
+    {
+      "default": "60",
+      "fieldname": "health_check_idle_minutes",
+      "fieldtype": "Int",
+      "label": "Only Ping After Idle (Minutes)",
+      "depends_on": "enable_health_checks",
+      "description": "A provider that answered a real call more recently than this is skipped \u2014 no point paying to ask what traffic already proved."
     }
   ],
   "index_web_pages_for_search": 0,

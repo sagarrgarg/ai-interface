@@ -7,3 +7,4 @@ ai_interface.patches.v1_0.create_default_provider_types
 ai_interface.patches.v1_0.backfill_base_cost
 ai_interface.patches.v1_0.sarvam_chat_path_v1
 ai_interface.patches.v1_0.assistant_defaults
+ai_interface.patches.v1_0.health_check_defaults
