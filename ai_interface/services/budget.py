@@ -17,7 +17,7 @@ class BudgetExceeded(frappe.ValidationError):
 	pass
 
 
-def check(settings, calling_app: str = "") -> dict | None:
+def check(settings, calling_app: str = "", user: str | None = None) -> dict | None:
 	"""Enforce caps before a call is queued.
 
 	Returns the breach that fired (or None). Raises when the applicable action
@@ -28,9 +28,9 @@ def check(settings, calling_app: str = "") -> dict | None:
 		return None
 
 	breaches = []
-	spend = _spend(calling_app)
+	spend = _spend(calling_app, user)
 
-	for scope, label, limits, action in _limits(settings, calling_app):
+	for scope, label, limits, action in _limits(settings, calling_app, user):
 		for period, cap in limits.items():
 			cap = flt(cap)
 			if cap <= 0:
@@ -65,7 +65,7 @@ def check(settings, calling_app: str = "") -> dict | None:
 	return worst
 
 
-def _limits(settings, calling_app: str):
+def _limits(settings, calling_app: str, user: str | None = None):
 	"""(scope key, human label, {period: cap}, action) for every applicable cap."""
 	default_action = settings.get("budget_action") or "Warn"
 	out = [(
@@ -84,10 +84,18 @@ def _limits(settings, calling_app: str):
 					{"daily": row.daily_budget, "monthly": row.monthly_budget},
 					row.budget_action or default_action,
 				))
+
+	# One person cannot drain the shared budget on their own. Daily only:
+	# a per-user monthly cap punishes heavy weeks the team already paid for.
+	if user:
+		per_user = settings.get("per_user_daily_budget")
+		if flt(per_user) > 0:
+			out.append(("user", user, {"daily": per_user}, default_action))
+
 	return out
 
 
-def _spend(calling_app: str) -> dict:
+def _spend(calling_app: str, user: str | None = None) -> dict:
 	"""Spend so far today and this calendar month, in base currency."""
 	today = nowdate()
 	month_start = get_first_day(today)
@@ -113,6 +121,9 @@ def _spend(calling_app: str) -> dict:
 	if calling_app:
 		a_daily, a_monthly = total("AND calling_app = %(app)s", {**params, "app": calling_app})
 		spend["app"] = {"daily": a_daily, "monthly": a_monthly}
+	if user:
+		u_daily, u_monthly = total("AND user = %(user)s", {**params, "user": user})
+		spend["user"] = {"daily": u_daily, "monthly": u_monthly}
 	return spend
 
 

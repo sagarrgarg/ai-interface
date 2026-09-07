@@ -29,7 +29,13 @@
     "budget_alert_threshold",
     "section_app_budget",
     "app_budgets",
-    "failure_threshold"
+    "failure_threshold",
+    "section_assistant",
+    "enable_assistant",
+    "per_user_daily_budget",
+    "assistant_show_query",
+    "assistant_max_doctypes",
+    "assistant_denied_doctypes"
   ],
   "fields": [
     {
@@ -196,6 +202,50 @@
       "fieldtype": "Int",
       "label": "Mark Provider Down After",
       "description": "Consecutive failures before a provider is treated as Down."
+    },
+    {
+      "fieldname": "section_assistant",
+      "fieldtype": "Section Break",
+      "label": "Site Assistant",
+      "description": "The chat assistant answers questions about this site by querying it as the logged-in user, so it can never reveal data that user could not already open."
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_assistant",
+      "fieldtype": "Check",
+      "label": "Enable Site Assistant"
+    },
+    {
+      "default": "0.10",
+      "fieldname": "per_user_daily_budget",
+      "fieldtype": "Currency",
+      "label": "Per-User Daily Budget",
+      "options": "base_currency",
+      "depends_on": "enable_assistant",
+      "description": "Cap on one user\u2019s AI spend per day, in base currency. 0 = no per-user cap."
+    },
+    {
+      "default": "1",
+      "fieldname": "assistant_show_query",
+      "fieldtype": "Check",
+      "label": "Show the Query That Ran",
+      "depends_on": "enable_assistant",
+      "description": "Displays the doctype, filters and aggregate used, so an answer can be checked rather than trusted."
+    },
+    {
+      "default": "12",
+      "fieldname": "assistant_max_doctypes",
+      "fieldtype": "Int",
+      "label": "Doctypes Sent Per Question",
+      "depends_on": "enable_assistant",
+      "description": "How many candidate doctypes get full field detail in the prompt. Higher is more accurate and more expensive."
+    },
+    {
+      "fieldname": "assistant_denied_doctypes",
+      "fieldtype": "Small Text",
+      "label": "Never Query These Doctypes",
+      "depends_on": "enable_assistant",
+      "description": "Comma or newline separated. Applied on top of Frappe permissions, not instead of them."
     }
   ],
   "index_web_pages_for_search": 0,

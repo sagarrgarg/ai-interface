@@ -53,7 +53,7 @@ def call_ai(
 		module = _module_for_doctype(reference_doctype)
 
 	# Refused before anything is queued, so a blocked call costs nothing.
-	budget.check(settings, calling_app)
+	budget.check(settings, calling_app, user)
 
 	requirements = list(needs or [])
 	if images and "vision" not in requirements:
