@@ -10,6 +10,7 @@ HISTORY_TURNS = 6
 class AIChatConversation(Document):
 	def validate(self):
 		self.enforce_ownership()
+		self.trim()
 		self.message_count = len(self.messages or [])
 		self.last_active = frappe.utils.now()
 		if not self.title and self.messages:
@@ -30,6 +31,18 @@ class AIChatConversation(Document):
 			return
 		if self.user != frappe.session.user and "System Manager" not in frappe.get_roles():
 			frappe.throw(_("This conversation belongs to someone else."), frappe.PermissionError)
+
+	def trim(self):
+		"""Drop the oldest turns past the configured ceiling.
+
+		A thread nobody ever closes would otherwise grow without bound, and the
+		document is loaded in full on every question.
+		"""
+		cap = int(frappe.db.get_single_value("AI Settings", "max_messages_per_conversation") or 0)
+		if cap > 0 and len(self.messages or []) > cap:
+			self.messages = self.messages[-cap:]
+			for i, row in enumerate(self.messages, start=1):
+				row.idx = i
 
 	def history(self) -> list[dict]:
 		"""Recent turns as question/answer pairs for the prompt."""
@@ -56,3 +69,27 @@ def get_permission_query_conditions(user):
 	if "System Manager" in frappe.get_roles(user):
 		return ""
 	return f"`tabAI Chat Conversation`.`user` = {frappe.db.escape(user)}"
+
+
+def clear_old_conversations():
+	"""Scheduled: forget threads nobody has touched in a long time.
+
+	Questions people ask carry business context, so they are not kept
+	indefinitely by default.
+	"""
+	days = int(frappe.db.get_single_value("AI Settings", "conversation_retention_days") or 0)
+	if days <= 0:
+		return
+
+	cutoff = frappe.utils.add_days(frappe.utils.nowdate(), -days)
+	stale = frappe.get_all(
+		"AI Chat Conversation",
+		filters={"last_active": ["<", cutoff]},
+		pluck="name",
+		limit_page_length=500,
+	)
+	for name in stale:
+		frappe.delete_doc("AI Chat Conversation", name, force=True, ignore_permissions=True)
+
+	if stale:
+		frappe.db.commit()

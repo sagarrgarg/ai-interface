@@ -14,6 +14,8 @@
 		spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.9L19 9.8l-4.1 2.9L15.8 18 12 15.2 8.2 18l.9-5.3L5 9.8l5.1-1.9z"/></svg>',
 		close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
 		plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+		history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>',
+		trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>',
 		send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>',
 	};
 
@@ -69,6 +71,7 @@
 			this.panel.innerHTML = `
 				<div class="ai-assistant-head">
 					<div class="ai-assistant-title">${frappe.utils.escape_html(__("Site Assistant"))}</div>
+					<button data-act="history" title="${__("Past conversations")}" aria-label="${__("Past conversations")}">${ICONS.history}</button>
 					<button data-act="new" title="${__("New conversation")}" aria-label="${__("New conversation")}">${ICONS.plus}</button>
 					<button data-act="close" title="${__("Close")}" aria-label="${__("Close")}">${ICONS.close}</button>
 				</div>
@@ -99,6 +102,7 @@
 			this.launcher.addEventListener("click", () => this.open());
 			this.panel.querySelector('[data-act="close"]').addEventListener("click", () => this.close());
 			this.panel.querySelector('[data-act="new"]').addEventListener("click", () => this.reset());
+			this.panel.querySelector('[data-act="history"]').addEventListener("click", () => this.showHistory());
 
 			this.form.addEventListener("submit", (e) => {
 				e.preventDefault();
@@ -124,7 +128,20 @@
 
 			this.body.addEventListener("click", (e) => {
 				const chip = e.target.closest(".ai-suggestion");
-				if (chip) this.ask(chip.textContent);
+				if (chip) {
+					this.ask(chip.textContent);
+					return;
+				}
+
+				const remove = e.target.closest("[data-delete]");
+				if (remove) {
+					e.stopPropagation();
+					this.remove(remove.getAttribute("data-delete"));
+					return;
+				}
+
+				const row = e.target.closest("[data-open]");
+				if (row) this.load(row.getAttribute("data-open"));
 			});
 		}
 
@@ -159,6 +176,50 @@
 				</div>`;
 		}
 
+		async showHistory() {
+			const rows = await this.call("list_conversations", { limit: 20 });
+			if (!rows || !rows.length) {
+				this.body.innerHTML =
+					'<div class="ai-assistant-empty">' +
+					frappe.utils.escape_html(__("No past conversations yet.")) +
+					"</div>";
+				return;
+			}
+
+			this.body.innerHTML =
+				'<div class="ai-history">' +
+				rows
+					.map((r) => {
+						const title = frappe.utils.escape_html(r.title || __("Untitled"));
+						const when = frappe.datetime.comment_when(r.last_active);
+						return `
+							<div class="ai-history-row" data-open="${frappe.utils.escape_html(r.name)}">
+								<div class="ai-history-main">
+									<div class="ai-history-title">${title}</div>
+									<div class="ai-history-meta">${when} · ${r.message_count || 0} ${__("messages")}</div>
+								</div>
+								<button class="ai-history-del" data-delete="${frappe.utils.escape_html(r.name)}"
+									aria-label="${__("Delete")}" title="${__("Delete")}">${ICONS.trash}</button>
+							</div>`;
+					})
+					.join("") +
+				"</div>";
+			this.body.scrollTop = 0;
+		}
+
+		async load(name) {
+			this.remember(name);
+			this.body.innerHTML = "";
+			await this.restore();
+			this.input.focus();
+		}
+
+		async remove(name) {
+			await this.call("delete_conversation", { conversation: name });
+			if (name === this.conversation) this.remember(null);
+			this.showHistory();
+		}
+
 		async restore() {
 			const r = await this.call("get_conversation", { conversation: this.conversation });
 			if (!r || !r.conversation || !(r.messages || []).length) {
@@ -191,6 +252,8 @@
 			this.setBusy(false);
 
 			if (!r) {
+				// xcall already surfaced the server's message for a thrown error
+				// such as a rate limit; this covers a genuinely silent failure.
 				this.render("error", __("The assistant did not respond. Please try again."));
 				return;
 			}

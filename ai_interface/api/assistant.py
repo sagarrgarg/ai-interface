@@ -10,7 +10,7 @@ import json
 import frappe
 from frappe import _
 
-from ai_interface.services import query_engine
+from ai_interface.services import budget, query_engine, rate_limit
 
 ROLES = {"System Manager", "AI User"}
 MAX_QUESTION = 1000
@@ -53,6 +53,9 @@ def ask(question: str, conversation: str | None = None) -> dict:
 	if len(question) > MAX_QUESTION:
 		frappe.throw(_("That question is too long. Try a shorter one."))
 
+	# Volume before cost: a stuck loop should be stopped by the cheaper check.
+	rate_limit.check(frappe.session.user)
+
 	doc = _load(conversation)
 	history = doc.history() if not doc.is_new() else []
 
@@ -60,6 +63,15 @@ def ask(question: str, conversation: str | None = None) -> dict:
 
 	try:
 		result = query_engine.answer(question, user=frappe.session.user, history=history)
+	except budget.BudgetExceeded as e:
+		# Distinct from a general failure: nothing is wrong, the money ran out.
+		# Say so plainly rather than reporting an error the user cannot act on.
+		message = str(e)
+		doc.append("messages", {"role": "Assistant", "content": message})
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+		return {"ok": False, "reason": "budget", "answer": message,
+		        "query": None, "conversation": doc.name}
 	except query_engine.QueryRefused as e:
 		# An expected refusal — no access, no usable query — is an answer, not a
 		# crash. Recorded in the conversation so the thread stays coherent.
@@ -67,7 +79,8 @@ def ask(question: str, conversation: str | None = None) -> dict:
 		doc.append("messages", {"role": "Assistant", "content": message})
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
-		return {"ok": False, "answer": message, "query": None, "conversation": doc.name}
+		return {"ok": False, "reason": "refused", "answer": message,
+		        "query": None, "conversation": doc.name}
 	except Exception as e:
 		frappe.log_error(title="AI Interface: assistant failed", message=frappe.get_traceback())
 		# The conversation is not saved here: a half-written turn is worse than

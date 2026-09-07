@@ -247,3 +247,42 @@
 	}
 	.ai-assistant-launcher { right: 16px; bottom: 16px; }
 }
+
+
+/* ---------- history ---------- */
+.ai-history { display: flex; flex-direction: column; gap: 6px; }
+.ai-history-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 9px 11px;
+	border: 1px solid var(--border-color);
+	border-radius: 8px;
+	background: var(--fg-color, #fff);
+	cursor: pointer;
+}
+.ai-history-row:hover { border-color: var(--primary, #2490ef); }
+.ai-history-main { flex: 1; min-width: 0; }
+.ai-history-title {
+	font-size: 13px;
+	color: var(--text-color);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.ai-history-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.ai-history-del {
+	flex: none;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 6px;
+	line-height: 0;
+	opacity: 0;
+}
+.ai-history-row:hover .ai-history-del { opacity: 1; }
+.ai-history-del:hover { color: var(--red-500, #d03b3b); background: var(--bg-color); }
+.ai-history-del:focus-visible { opacity: 1; outline: 2px solid var(--primary, #2490ef); }
+.ai-history-del svg { width: 14px; height: 14px; }

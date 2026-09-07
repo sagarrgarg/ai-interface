@@ -25,3 +25,10 @@ has_permission = {
 permission_query_conditions = {
 	"AI Chat Conversation": "ai_interface.ai_interface.doctype.ai_chat_conversation.ai_chat_conversation.get_permission_query_conditions",
 }
+
+
+scheduler_events = {
+	"daily": [
+		"ai_interface.ai_interface.doctype.ai_chat_conversation.ai_chat_conversation.clear_old_conversations",
+	],
+}

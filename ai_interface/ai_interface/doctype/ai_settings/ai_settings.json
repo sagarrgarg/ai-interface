@@ -35,7 +35,13 @@
     "per_user_daily_budget",
     "assistant_show_query",
     "assistant_max_doctypes",
-    "assistant_denied_doctypes"
+    "assistant_denied_doctypes",
+    "section_assistant_limits",
+    "assistant_rate_per_minute",
+    "assistant_rate_per_hour",
+    "column_break_limits",
+    "max_messages_per_conversation",
+    "conversation_retention_days"
   ],
   "fields": [
     {
@@ -246,6 +252,49 @@
       "label": "Never Query These Doctypes",
       "depends_on": "enable_assistant",
       "description": "Comma or newline separated. Applied on top of Frappe permissions, not instead of them."
+    },
+    {
+      "fieldname": "section_assistant_limits",
+      "fieldtype": "Section Break",
+      "label": "Assistant Limits",
+      "depends_on": "enable_assistant",
+      "description": "Spend caps stop cost. These stop volume \u2014 a stuck script or an impatient user can burn a daily budget in seconds."
+    },
+    {
+      "default": "6",
+      "fieldname": "assistant_rate_per_minute",
+      "fieldtype": "Int",
+      "label": "Questions Per Minute",
+      "depends_on": "enable_assistant",
+      "description": "Per user. 0 = no limit."
+    },
+    {
+      "default": "60",
+      "fieldname": "assistant_rate_per_hour",
+      "fieldtype": "Int",
+      "label": "Questions Per Hour",
+      "depends_on": "enable_assistant",
+      "description": "Per user. 0 = no limit."
+    },
+    {
+      "fieldname": "column_break_limits",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "40",
+      "fieldname": "max_messages_per_conversation",
+      "fieldtype": "Int",
+      "label": "Messages Per Conversation",
+      "depends_on": "enable_assistant",
+      "description": "Oldest turns are dropped past this. Keeps a long thread from growing without bound."
+    },
+    {
+      "default": "30",
+      "fieldname": "conversation_retention_days",
+      "fieldtype": "Int",
+      "label": "Keep Conversations For (Days)",
+      "depends_on": "enable_assistant",
+      "description": "Inactive conversations are deleted after this. 0 = keep forever."
     }
   ],
   "index_web_pages_for_search": 0,
