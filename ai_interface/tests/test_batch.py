@@ -165,6 +165,32 @@ class TestBatch(FrappeTestCase):
 		)
 		self.assertEqual(batch.poll(name), "Failed")
 
+	def test_a_late_poll_still_collects_an_ended_batch(self):
+		name = self.submit()
+		frappe.db.set_value(
+			"AI Batch", name, "submitted_on", frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-31)
+		)
+		BatchAdapter.ended = True
+		BatchAdapter.outcomes = {"lead-1": reply('{"fit": 80}')}
+		self.assertEqual(batch.poll(name), "Ended")
+
+	def test_a_batch_being_collected_is_not_collected_twice(self):
+		name = self.submit()
+		frappe.db.set_value("AI Batch", name, "status", "Collecting")
+		BatchAdapter.ended = True
+		with patch.object(BatchAdapter, "batch_results") as results:
+			self.assertEqual(batch.poll(name), "Collecting")
+		results.assert_not_called()
+
+	def test_a_submission_that_never_finished_is_failed(self):
+		name = self.submit()
+		frappe.db.set_value("AI Batch", name, "status", "Submitting")
+		frappe.db.set_value(
+			"AI Batch", name, "creation", frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-2)
+		)
+		batch.poll_open_batches()
+		self.assertEqual(frappe.db.get_value("AI Batch", name, "status"), "Failed")
+
 	def test_cancel(self):
 		name = self.submit()
 		self.assertEqual(batch.cancel(name), "Cancelled")

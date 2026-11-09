@@ -21,19 +21,27 @@ import frappe
 from frappe.utils import add_days, cint, now_datetime
 
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-# Seven or more digits, allowing spaces, dots, dashes, brackets and a leading +, so that order
-# numbers and prices (short, or with a decimal point followed by two digits) mostly survive.
-# Not preceded by a letter, digit, dot, dash or slash, so document numbers (SINV-2026-00123) and
-# paths are left alone; dates and times are skipped below.
-PHONE = re.compile(r"(?<![\w./-])(?:\+|\()?\d[\d\s().-]{6,}\d(?![\w/:-])")
-DATE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?|\d{2}[./-]\d{2}[./-]\d{4}")
+# A phone number: starts with + or (, or is digits in groups separated by spaces or dashes.
+# Not preceded by a letter, digit, dot, dash, slash or colon, so document numbers (SINV-2026-00123),
+# timestamps, HS codes (8471.30.10) and paths are left alone.
+PHONE = re.compile(r"(?<![\w./:-])(?:\+|\()?\d[\d\s().-]{6,}\d(?![\w/:-])")
+DATE = re.compile(r"\d{4}-\d{2}-\d{2}|\d{2}[./-]\d{2}[./-]\d{4}")
+DECIMAL_TAIL = re.compile(r"[.,]\d{1,2}$")
 
 
 def _phone(match) -> str:
 	text = match.group()
-	if DATE.match(text.strip(" (")) or sum(c.isdigit() for c in text) < 7:
+	digits = sum(c.isdigit() for c in text)
+	stripped = text.strip(" (")
+	if DATE.match(stripped) or DECIMAL_TAIL.search(text):
 		return text
-	return "[phone]"
+	if text.startswith(("+", "(")):
+		return "[phone]" if digits >= 7 else text
+	# Without + or (: only digit groups separated by spaces or dashes, at least 8 digits, so a long
+	# order or PO number (12345678, 4500012345) or a total with decimals is not taken for a phone.
+	if digits >= 8 and re.search(r"\d[\s-]+\d", text) and "." not in text:
+		return "[phone]"
+	return text
 
 
 def redact(text: str | None) -> str | None:
@@ -73,7 +81,7 @@ def purge_payloads() -> int:
 	for app in apps:
 		cleared += _clear(policy(app, settings).retention_days, "AND calling_app = %(app)s", {"app": app})
 	if cint(settings.get("payload_retention_days")):
-		exclude = "AND calling_app NOT IN %(apps)s" if apps else ""
+		exclude = "AND IFNULL(calling_app, '') NOT IN %(apps)s" if apps else ""
 		cleared += _clear(
 			cint(settings.payload_retention_days), exclude, {"apps": tuple(apps)} if apps else {}
 		)

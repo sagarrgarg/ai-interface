@@ -26,6 +26,8 @@ permission_query_conditions = {
 	"AI Chat Conversation": "ai_interface.ai_interface.doctype.ai_chat_conversation.ai_chat_conversation.get_permission_query_conditions",
 }
 
+# Apps declare the callables their eval sets may run (services/evals.py):
+# ai_eval_targets = ["myapp.evals.classify_reply", "myapp.evals.*"]
 
 scheduler_events = {
 	"cron": {

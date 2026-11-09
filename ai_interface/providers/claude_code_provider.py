@@ -3,7 +3,7 @@ import os
 import subprocess
 import tempfile
 
-from ai_interface.providers.base import BaseProvider, CompletionRequest, ProviderResponse
+from ai_interface.providers.base import BaseProvider, CompletionRequest, ProviderHTTPError, ProviderResponse
 
 # Run like Harvey does: no tools, no MCP servers, no user or project settings, no slash
 # commands, no saved session. A text-only call should never be able to touch the machine.
@@ -124,6 +124,12 @@ class ClaudeCodeProvider(BaseProvider):
 			parts.append(
 				"Reply with only a JSON object (no prose, no code fence) matching this JSON Schema:\n"
 				+ json.dumps(request.output_schema)
+			)
+		if not _cli_supports_isolation():
+			# Never fall back to a run with the CLI's default tools: a prompt carrying untrusted
+			# text could make it read files on this server.
+			raise ProviderHTTPError(
+				"The installed Claude CLI cannot run isolated (missing flags); full requests are not configured"
 			)
 		response = self._run_claude("\n\n".join(parts), request.model, timeout)
 		response.stop_reason = "end_turn"

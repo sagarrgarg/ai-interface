@@ -35,6 +35,17 @@ def classify_with_model(inp: dict) -> dict:
 	).data
 
 
+_targets = patch.object(evals, "allowed_targets", return_value=["ai_interface.tests.test_evals.*"])
+
+
+def setUpModule():
+	_targets.start()
+
+
+def tearDownModule():
+	_targets.stop()
+
+
 def make_set(name, target, cases, threshold=100):
 	if frappe.db.exists("AI Eval Set", name):
 		frappe.delete_doc("AI Eval Set", name, force=True, ignore_permissions=True)
@@ -123,6 +134,23 @@ class TestEvals(FrappeTestCase):
 		run = frappe.get_doc("AI Eval Run", evals.run_set(f"{SET} broken"))
 		self.assertEqual((run.status, run.passed), ("Failed", 0))
 		self.assertIn("target failed", run.results[0].failures)
+
+	def test_only_declared_targets_run(self):
+		with self.assertRaises(frappe.PermissionError):
+			make_set(f"{SET} rogue", "frappe.client.delete", [{"case_name": "c", "input": "{}"}])
+		with patch.object(evals, "allowed_targets", return_value=["excom.evals.classify"]):
+			self.assertRaises(frappe.PermissionError, evals.check_target, "excom.evals.classify_more")
+			evals.check_target("excom.evals.classify")
+
+	def test_a_failing_check_still_stops_tagging(self):
+		make_set(
+			f"{SET} bad check",
+			"ai_interface.tests.test_evals.classify",
+			[{"case_name": "c", "input": '{"text": "hi"}', "checks": '[{"type": "regex", "value": "("}]'}],
+		)
+		run = frappe.get_doc("AI Eval Run", evals.run_set(f"{SET} bad check"))
+		self.assertEqual(run.passed, 0)
+		self.assertIsNone(getattr(frappe.local, "ai_eval_run", None))
 
 	def test_the_judge(self):
 		make_set(

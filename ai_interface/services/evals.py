@@ -134,24 +134,29 @@ def _run_case(es, case, run_name: str) -> dict:
 	frappe.local.ai_eval_logs = []
 	frappe.local.ai_eval_run = run_name
 	started = time.time()
-	failures, output = [], None
+	failures, output, latency = [], None, 0
 	try:
-		output = _call_target(es, inp)
-	except Exception as e:
-		failures.append(f"target failed: {e!s}")
+		try:
+			output = _call_target(es, inp)
+		except Exception as e:
+			failures.append(f"target failed: {e!s}")
+		finally:
+			latency = int((time.time() - started) * 1000)
+
+		if not failures:
+			failures += _check_expected(output, case.expected)
+			for check in _load(case.checks, []) or []:
+				try:
+					problem = _check(output, check, inp, es)
+				except Exception as e:
+					problem = f"{check.get('type')}: check failed ({e!s})"
+				if problem:
+					failures.append(problem)
+		logs = list(frappe.local.ai_eval_logs or [])
 	finally:
-		latency = int((time.time() - started) * 1000)
-
-	if not failures:
-		failures += _check_expected(output, case.expected)
-		for check in _load(case.checks, []) or []:
-			problem = _check(output, check, inp, es)
-			if problem:
-				failures.append(problem)
-
-	logs = list(frappe.local.ai_eval_logs or [])
-	frappe.local.ai_eval_logs = None
-	frappe.local.ai_eval_run = None
+		# Stop tagging calls to this run whatever happened, so later calls in the job are not counted.
+		frappe.local.ai_eval_logs = None
+		frappe.local.ai_eval_run = None
 	cost = sum(
 		flt(c) for c in frappe.get_all("AI Call Log", {"name": ["in", logs or ["-"]]}, pluck="base_cost")
 	)
@@ -183,7 +188,31 @@ def _call_target(es, inp):
 			return text
 	if not es.target:
 		frappe.throw(_("Eval set {0} has no target").format(es.name))
+	check_target(es.target)
 	return frappe.get_attr(es.target)(inp)
+
+
+def allowed_targets() -> list[str]:
+	"""Callables apps declare as eval targets, in hooks.py:
+
+	    ai_eval_targets = ["excom.excom_ai.evals.classify_reply", "excom.excom_ai.evals.*"]
+
+	An entry ending in ".*" allows every function in that module.
+	"""
+	return [t.strip() for t in frappe.get_hooks("ai_eval_targets") or [] if t and t.strip()]
+
+
+def check_target(path: str):
+	"""Only a declared callable may be a target: a free dotted path would let anyone who edits an
+	eval set run any function on the server."""
+	path = (path or "").strip()
+	for allowed in allowed_targets():
+		if path == allowed or (allowed.endswith(".*") and path.rsplit(".", 1)[0] == allowed[:-2]):
+			return
+	frappe.throw(
+		_("{0} is not a declared eval target. Add it to an app's ai_eval_targets hook.").format(path),
+		frappe.PermissionError,
+	)
 
 
 # ---------------------------------------------------------------- checks

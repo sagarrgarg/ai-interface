@@ -29,6 +29,27 @@ MEDIA_SIGNATURES = (
 )
 
 
+def _strict_ready(schema) -> bool:
+	if not isinstance(schema, dict):
+		return False
+	if schema.get("type") == "object":
+		props = schema.get("properties") or {}
+		if schema.get("additionalProperties") is not False or set(schema.get("required") or []) != set(props):
+			return False
+		return all(
+			_strict_ready(p)
+			for p in props.values()
+			if isinstance(p, dict) and p.get("type") in ("object", "array")
+		)
+	if schema.get("type") == "array":
+		return (
+			_strict_ready(schema.get("items") or {})
+			if (schema.get("items") or {}).get("type") in ("object", "array")
+			else True
+		)
+	return True
+
+
 class OpenAICompatibleProvider(BaseProvider):
 	def chat(
 		self,
@@ -113,7 +134,13 @@ class OpenAICompatibleProvider(BaseProvider):
 		if request.output_schema:
 			payload["response_format"] = {
 				"type": "json_schema",
-				"json_schema": {"name": "output", "schema": request.output_schema, "strict": True},
+				"json_schema": {
+					"name": "output",
+					"schema": request.output_schema,
+					# Strict mode needs additionalProperties false and every property required;
+					# otherwise the vendor refuses the request. Validation happens in the caller anyway.
+					"strict": _strict_ready(request.output_schema),
+				},
 			}
 		if request.tools:
 			payload["tools"] = [
@@ -151,11 +178,17 @@ class OpenAICompatibleProvider(BaseProvider):
 		else:
 			response = self._to_response(data, request.model)
 		finish = choice.get("finish_reason") or ""
-		response.stop_reason = {"stop": "end_turn", "length": "max_tokens", "tool_calls": "tool_use"}.get(finish, finish)
+		response.stop_reason = {"stop": "end_turn", "length": "max_tokens", "tool_calls": "tool_use"}.get(
+			finish, finish
+		)
 		response.tool_calls = calls
 		cached = ((data.get("usage") or {}).get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+		# prompt_tokens already includes the cached ones: count them once, at the cache rate.
+		response.input_tokens = max(0, (response.input_tokens or 0) - cached)
 		response.cache_read_tokens = cached
-		response.assistant_message = {k: v for k, v in message.items() if k in ("role", "content", "tool_calls")}
+		response.assistant_message = {
+			k: v for k, v in message.items() if k in ("role", "content", "tool_calls")
+		}
 		response.assistant_message.setdefault("role", "assistant")
 		return response
 
@@ -267,8 +300,7 @@ class OpenAICompatibleProvider(BaseProvider):
 					"produced no answer. Raise max_tokens for this model."
 				)
 			raise ProviderHTTPError(
-				f"{requested_model} returned an empty response truncated at max_tokens. "
-				"Raise max_tokens."
+				f"{requested_model} returned an empty response truncated at max_tokens. Raise max_tokens."
 			)
 
 		usage = data.get("usage") or {}

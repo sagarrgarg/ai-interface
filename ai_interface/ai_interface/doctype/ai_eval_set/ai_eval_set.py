@@ -3,4 +3,8 @@ from frappe.model.document import Document
 
 
 class AIEvalSet(Document):
-	pass
+	def validate(self):
+		if self.target_type == "Callable" and self.target:
+			from ai_interface.services.evals import check_target
+
+			check_target(self.target)

@@ -457,7 +457,7 @@ global). See §9a.
 
 ### AI Batch — *autoname: hash*
 
-One batch submission: `status` (Submitted → Ended / Failed / Cancelled), `calling_app`, `action`,
+One batch submission: `status` (Submitting → Submitted → Collecting → Ended / Failed / Cancelled), `calling_app`, `action`,
 `budget_scope`, `provider`, `model`, `provider_batch_id`, `total` / `succeeded` / `failed`,
 `submitted_on` / `last_polled_on` / `ended_on`, `base_cost`, `output_schema`, `on_complete`,
 `error`. Its requests are AI Call Log rows with `batch` set.
@@ -467,6 +467,9 @@ One batch submission: `status` (Submitted → Ended / Failed / Cancelled), `call
 `calling_app`, `action`, `target_type` (Callable / Prompt Template), `target` or
 `prompt_template`, `pass_threshold`, `cases` (AI Eval Case: `case_name`, `enabled`, `input`,
 `expected`, `checks`, `notes`), `last_run`, `last_score`. **Run now** on the form.
+A Callable target must be declared by an app in its hooks.py, `ai_eval_targets = ["app.module.fn"]`
+(or `"app.module.*"` for every function in a module); any other path is refused on save and at run
+time, so editing an eval set can never run arbitrary server code.
 
 ### AI Eval Run — *autoname: hash*
 

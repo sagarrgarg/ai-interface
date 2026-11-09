@@ -193,11 +193,18 @@ def run(
 	response, pinned = _first_turn(chain, request, state)
 	adapter = _adapter_for(pinned["provider"])
 	turns = 1
-	while response.tool_calls:
+	while response.tool_calls or response.stop_reason == "pause_turn":
 		if turns >= max_steps:
 			raise AIRequestFailed(_("Stopped after {0} turns: the model kept calling tools.").format(turns))
 		if time_budget and time.time() - state.started > time_budget:
 			raise AIRequestFailed(_("Stopped: the time budget of {0} seconds ran out.").format(time_budget))
+		if not response.tool_calls:
+			# A server tool (web search, fetch) paused a long turn: send it back to carry on.
+			_append(request.messages, response.assistant_message)
+			budget.check(settings, calling_app, user, scope=budget_scope, caps=budget_caps)
+			response = _turn(pinned, request, state)
+			turns += 1
+			continue
 		results = []
 		for call in response.tool_calls:
 			content, is_error = _run_tool(runners.get(call.name), call, user, state)
@@ -207,6 +214,8 @@ def run(
 			results.append({"id": call.id, "content": content, "is_error": is_error})
 		_append(request.messages, response.assistant_message)
 		_append(request.messages, adapter.tool_results_message(results))
+		# Every turn costs: a run that crosses its cap stops before the next call, not after the loop.
+		budget.check(settings, calling_app, user, scope=budget_scope, caps=budget_caps)
 		response = _turn(pinned, request, state)
 		turns += 1
 
@@ -224,6 +233,7 @@ def run(
 					f"{problem}. Reply again with only the corrected JSON.",
 				}
 			)
+			budget.check(settings, calling_app, user, scope=budget_scope, caps=budget_caps)
 			response = _turn(pinned, request, state)
 			text = response.content or ""
 			data, problem = _parse_json(text, output_schema)
@@ -285,9 +295,9 @@ def _turn(step, request, state):
 	if not state.parent:
 		state.parent = log.name
 
-	credential, auth_type = provider_doc.get_credential()
 	start = time.time()
 	try:
+		credential, auth_type = provider_doc.get_credential()
 		response = adapter.complete(
 			request,
 			credential=credential,
@@ -328,7 +338,7 @@ def _turn(step, request, state):
 		failure.error_type = error_type
 		raise failure
 
-	cost = _cost(provider_doc, step["model"], response)
+	cost = _cost(provider_doc, step["model"], response, cache_ttl=request.cache_ttl)
 	rate = ai_client._exchange_rate(provider_doc, base_currency)
 	keep = bool(settings.enable_logging)
 	log.db_set(
@@ -368,13 +378,16 @@ def _turn(step, request, state):
 	return response
 
 
-def _cost(provider_doc, model, response) -> float:
-	"""Token cost, cache tokens included (they are billed apart from input tokens)."""
+def _cost(provider_doc, model, response, cache_ttl: str = "5m") -> float:
+	"""Token cost, cache tokens included (they are billed apart from input tokens).
+
+	Without explicit cache rates on the model: reads at 10% of the input rate, writes at 125%
+	(5-minute lifetime) or 200% (1-hour lifetime), Anthropic's pricing."""
 	for m in provider_doc.models:
 		if m.model_id == model:
 			rate_in = m.cost_per_input_token or 0
 			read = m.get("cost_per_cache_read_token") or rate_in * 0.1
-			write = m.get("cost_per_cache_write_token") or rate_in * 1.25
+			write = m.get("cost_per_cache_write_token") or rate_in * (2.0 if cache_ttl == "1h" else 1.25)
 			return (
 				response.input_tokens * rate_in
 				+ response.output_tokens * (m.cost_per_output_token or 0)
@@ -567,19 +580,22 @@ def run_async(
 		user=user,
 		on_complete=on_complete,
 		job_context=job_context or {},
-		job_name=job_id,
+		run_job_id=job_id,
 	)
 	return job_id
 
 
-def _run_job(run_kwargs: dict, user: str, on_complete: str | None, job_context: dict, job_name: str):
+def _run_job(run_kwargs: dict, user: str, on_complete: str | None, job_context: dict, run_job_id: str):
+	# The job runs as the user it was queued for, so permission checks in tools apply their rights.
+	frappe.set_user(user)
 	result, error = None, None
 	try:
 		result = run(user=user, **run_kwargs)
 	except Exception as e:
+		frappe.db.rollback()
 		error = str(e)
 		frappe.log_error(title="AI run failed", message=frappe.get_traceback())
-	payload = {"job": job_name, "log": result.log if result else None, "error": error}
+	payload = {"job": run_job_id, "log": result.log if result else None, "error": error}
 	frappe.publish_realtime("ai_run_failed" if error else "ai_run_complete", payload, user=user)
 	if on_complete:
 		try:

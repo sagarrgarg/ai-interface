@@ -244,6 +244,13 @@ class TestChatRun(FrappeTestCase):
 			ScriptedAdapter.seen[0][2].tools, [{"type": "web_search_20260209", "name": "web_search"}]
 		)
 
+	def test_a_paused_server_tool_turn_is_continued(self):
+		ScriptedAdapter.script["main"] = [answer("searching", stop="pause_turn"), answer("done")]
+		r = self.go(prompt="x", tools=[{"type": "web_search_20260209", "name": "web_search"}])
+		self.assertEqual(r.text, "done")
+		self.assertEqual(len(ScriptedAdapter.seen), 2)
+		self.assertEqual(ScriptedAdapter.seen[1][1][-1], {"role": "assistant", "content": "searching"})
+
 	# ---- routing, fallback, refusals
 
 	def test_a_provider_that_cannot_do_tools_is_skipped(self):
@@ -317,12 +324,12 @@ class TestChatRun(FrappeTestCase):
 			chat.run_async(prompt="x", tools=[{"name": "t", "run": print}])
 		ScriptedAdapter.script["main"] = [answer("done")]
 		kw = queued[0]
-		chat._run_job(kw["run_kwargs"], kw["user"], kw["on_complete"], kw["job_context"], kw["job_name"])
+		chat._run_job(kw["run_kwargs"], kw["user"], kw["on_complete"], kw["job_context"], kw["run_job_id"])
 		self.assertEqual(
 			(CALLBACKS[-1]["result"]["text"], CALLBACKS[-1]["context"]), ("done", {"task": "T-1"})
 		)
 		ScriptedAdapter.script["main"] = [ProviderHTTPError("bad key", 401)]
-		chat._run_job(kw["run_kwargs"], kw["user"], kw["on_complete"], kw["job_context"], kw["job_name"])
+		chat._run_job(kw["run_kwargs"], kw["user"], kw["on_complete"], kw["job_context"], kw["run_job_id"])
 		self.assertIsNone(CALLBACKS[-1]["result"])
 		self.assertIn("Auth", CALLBACKS[-1]["error"])
 
@@ -472,6 +479,7 @@ class TestAdapters(FrappeTestCase):
 		self.assertEqual(
 			(out.stop_reason, out.tool_calls[0].input, out.cache_read_tokens), ("tool_use", {"a": 1}, 4)
 		)
+		self.assertEqual(out.input_tokens, 1, "cached tokens are not counted twice")
 		self.assertEqual(
 			adapter.tool_results_message([{"id": "c1", "content": "r"}]),
 			[{"role": "tool", "tool_call_id": "c1", "content": "r"}],
@@ -511,3 +519,18 @@ class TestAdapters(FrappeTestCase):
 		self.assertIn("JSON Schema", run.call_args.kwargs["input"])
 		self.assertEqual(run.call_args.kwargs["env"]["CLAUDE_CODE_SAFE_MODE"], "1")
 		self.assertEqual(out.content, '{"a": 1}')
+
+	def test_claude_cli_refuses_to_run_unisolated(self):
+		from ai_interface.providers import claude_code_provider as cc
+
+		with (
+			patch.object(cc, "_cli_supports_isolation", return_value=False),
+			patch.object(cc.subprocess, "run") as run,
+		):
+			with self.assertRaises(ProviderHTTPError):
+				cc.ClaudeCodeProvider().complete(
+					CompletionRequest(
+						messages=[{"role": "user", "content": "q"}], model="sonnet", max_tokens=10
+					)
+				)
+		run.assert_not_called()

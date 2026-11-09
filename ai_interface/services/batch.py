@@ -106,7 +106,7 @@ def submit(
 	doc = frappe.get_doc(
 		{
 			"doctype": "AI Batch",
-			"status": "Submitted",
+			"status": "Submitting",
 			"calling_app": calling_app,
 			"action": action,
 			"budget_scope": budget_scope,
@@ -169,13 +169,20 @@ def submit(
 	except Exception as e:
 		_fail(doc, f"Submission failed: {e!s}", [cid for cid, _ in items])
 		raise
-	doc.db_set({"provider_batch_id": batch_id, "submitted_on": now_datetime()})
+	doc.db_set({"provider_batch_id": batch_id, "submitted_on": now_datetime(), "status": "Submitted"})
 	frappe.db.commit()
 	return doc.name
 
 
 def poll_open_batches():
 	"""Scheduler (every 5 minutes): collect every batch the provider has finished."""
+	# A batch stuck in Submitting for an hour never reached the provider (the submitting job died).
+	for name in frappe.get_all(
+		"AI Batch",
+		{"status": "Submitting", "creation": ["<", add_to_date(now_datetime(), hours=-1)]},
+		pluck="name",
+	):
+		_fail(frappe.get_doc("AI Batch", name), _("Submission never finished."))
 	for name in frappe.get_all("AI Batch", {"status": "Submitted"}, pluck="name", order_by="creation asc"):
 		try:
 			poll(name)
@@ -194,16 +201,25 @@ def poll(name: str) -> str:
 	credential, auth_type = provider_doc.get_credential()
 	auth = dict(credential=credential, auth_type=auth_type, api_base_url=provider_doc.api_base_url or "")
 
-	if not doc.provider_batch_id or (
-		doc.submitted_on and now_datetime() > add_to_date(doc.submitted_on, hours=STALE_HOURS)
-	):
-		_fail(doc, _("No result after {0} hours.").format(STALE_HOURS))
+	if not doc.provider_batch_id:
+		_fail(doc, _("The provider never confirmed this batch."))
 		return "Failed"
+	# Ask first: results stay at the provider for weeks, so a late poll still collects them.
 	state = adapter.batch_status(doc.provider_batch_id, **auth)
 	doc.db_set("last_polled_on", now_datetime())
 	if not state.get("ended"):
+		if doc.submitted_on and now_datetime() > add_to_date(doc.submitted_on, hours=STALE_HOURS):
+			_fail(doc, _("No result after {0} hours.").format(STALE_HOURS))
+			return "Failed"
 		frappe.db.commit()
 		return "Submitted"
+	# Claim the collection, so the scheduler and the Check now button never both collect.
+	frappe.db.sql(
+		"UPDATE `tabAI Batch` SET status = 'Collecting' WHERE name = %s AND status = 'Submitted'", doc.name
+	)
+	if not frappe.db.sql("SELECT ROW_COUNT()")[0][0]:
+		return frappe.db.get_value("AI Batch", doc.name, "status")
+	frappe.db.commit()
 
 	schema = json.loads(doc.output_schema) if doc.output_schema else None
 	type_doc = frappe.get_cached_doc("AI Provider Type", provider_doc.provider_type)
