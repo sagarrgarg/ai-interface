@@ -426,15 +426,17 @@ def run_query(spec: dict, *, user: str) -> list[dict]:
 
 		if agg:
 			# Counted in the database, so the answer is not capped by page size.
-			fields = [f"{agg['function']}(`{agg['field']}`) as value"]
+			# Frappe v16 refuses SQL functions written as strings; the dict form is the supported one.
+			fields = [{agg["function"].upper(): agg["field"], "as": "value"}]
 			if group_by:
-				fields.insert(0, f"`{group_by}` as label")
+				fields.insert(0, f"{group_by} as label")
 
 		return frappe.get_all(
 			spec["doctype"],
 			filters=spec.get("filters") or None,
 			fields=fields,
-			group_by=f"`{group_by}`" if group_by else None,
+			# validate_spec only lets plain field names through, so no quoting is needed (v16 rejects it).
+			group_by=group_by or None,
 			order_by=spec.get("order_by") if not agg else None,
 			limit_page_length=spec["limit"],
 		)
