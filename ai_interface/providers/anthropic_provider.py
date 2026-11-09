@@ -2,7 +2,13 @@ import base64
 
 import anthropic
 
-from ai_interface.providers.base import BaseProvider, ProviderResponse
+from ai_interface.providers.base import (
+	BaseProvider,
+	CompletionRequest,
+	ProviderRefusal,
+	ProviderResponse,
+	ToolCall,
+)
 
 CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 
@@ -30,23 +36,16 @@ class AnthropicProvider(BaseProvider):
 
 		system_msg = self._prepare_system(system_msg, auth_type)
 
+		# No temperature: current Claude models reject sampling parameters (HTTP 400).
 		kwargs: dict = {
 			"model": model,
 			"max_tokens": max_tokens,
-			"temperature": temperature,
 			"messages": chat_messages,
 		}
 		if system_msg:
 			kwargs["system"] = system_msg
 
-		response = client.messages.create(**kwargs)
-		return ProviderResponse(
-			content=response.content[0].text,
-			input_tokens=response.usage.input_tokens,
-			output_tokens=response.usage.output_tokens,
-			model=response.model,
-			raw_response=response.model_dump(),
-		)
+		return self._to_response(client.messages.create(**kwargs))
 
 	def vision(
 		self,
@@ -100,13 +99,97 @@ class AnthropicProvider(BaseProvider):
 		if system_msg:
 			kwargs["system"] = system_msg
 
+		return self._to_response(client.messages.create(**kwargs))
+
+	FEATURES = frozenset({"system", "json", "tools", "server_tools", "cache", "effort"})
+
+	def complete(
+		self,
+		request: CompletionRequest,
+		credential: str = "",
+		auth_type: str = "API Key",
+		api_base_url: str = "",
+		timeout: int = 120,
+	) -> ProviderResponse:
+		client = self._get_client(credential, auth_type, api_base_url, timeout)
+		ttl = {"type": "ephemeral", "ttl": request.cache_ttl} if request.cache_ttl == "1h" else {"type": "ephemeral"}
+
+		system = []
+		if auth_type == "Auth Token":
+			system.append({"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX})
+		for block in request.system:
+			entry = {"type": "text", "text": block["text"]}
+			if block.get("cache"):
+				entry["cache_control"] = ttl
+			system.append(entry)
+
+		kwargs: dict = {"model": request.model, "max_tokens": request.max_tokens, "messages": request.messages}
+		if system:
+			kwargs["system"] = system
+		if request.tools:
+			kwargs["tools"] = [self._tool(t) for t in request.tools]
+		output_config = {}
+		if request.effort:
+			output_config["effort"] = request.effort
+		if request.output_schema:
+			output_config["format"] = {"type": "json_schema", "schema": request.output_schema}
+		if output_config:
+			kwargs["output_config"] = output_config
+
 		response = client.messages.create(**kwargs)
+		if response.stop_reason == "refusal":
+			details = getattr(response, "stop_details", None)
+			raise ProviderRefusal(
+				f"The model declined this request ({getattr(details, 'category', None) or 'no category'})"
+			)
+		return self._to_response(response, assistant_turn=True)
+
+	def tool_results_message(self, results: list[dict]) -> dict:
+		# All results go back in one user message, so the model keeps calling tools in parallel.
+		return {
+			"role": "user",
+			"content": [
+				{
+					"type": "tool_result",
+					"tool_use_id": r["id"],
+					"content": r["content"],
+					**({"is_error": True} if r.get("is_error") else {}),
+				}
+				for r in results
+			],
+		}
+
+	@staticmethod
+	def _tool(tool: dict) -> dict:
+		if tool.get("type"):  # a server tool (web search, web fetch…), passed through
+			return tool
+		spec = {"name": tool["name"], "description": tool.get("description", ""), "input_schema": tool["input_schema"]}
+		if tool.get("strict"):
+			spec["strict"] = True
+		return spec
+
+	@staticmethod
+	def _to_response(response, assistant_turn: bool = False) -> ProviderResponse:
+		"""Text from the text blocks only: current models put thinking blocks first."""
+		text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text")
+		calls = [
+			ToolCall(id=b.id, name=b.name, input=dict(b.input or {}))
+			for b in response.content
+			if getattr(b, "type", "") == "tool_use"
+		]
+		usage = response.usage
 		return ProviderResponse(
-			content=response.content[0].text,
-			input_tokens=response.usage.input_tokens,
-			output_tokens=response.usage.output_tokens,
+			content=text,
+			input_tokens=usage.input_tokens or 0,
+			output_tokens=usage.output_tokens or 0,
 			model=response.model,
 			raw_response=response.model_dump(),
+			stop_reason=response.stop_reason or "",
+			tool_calls=calls,
+			cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+			cache_write_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+			# Thinking and tool_use blocks go back unchanged on the next turn.
+			assistant_message={"role": "assistant", "content": response.content} if assistant_turn else None,
 		)
 
 	def fetch_models(

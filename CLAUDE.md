@@ -59,6 +59,7 @@ ai_interface/
     generator.py        # generate(prompt/template, context) → text
     vision.py           # extract(file_url, prompt) → extracted text
     query_engine.py     # query(question) → NL answer from ERPNext data
+    chat.py             # run(): system + messages, JSON schema, tools (ai_tools hook), caching, effort
   ai_interface/         # Frappe module — doctypes
     doctype/
       ai_settings/      # Single: default provider, model, timeouts, base currency

@@ -194,6 +194,46 @@ answer = query("How many customers ordered this month?",
 > Costs **two** calls: `query_generation` and `answer_synthesis`. Both are logged and
 > attributed to your `calling_app`.
 
+### run() — full requests: system prompt, JSON answer, tools, caching, effort
+
+For agents and assistants. Synchronous: call it from a background job.
+
+```python
+from ai_interface.services.chat import run
+
+result = run(
+    system=[{"text": persona, "cache": True}, {"text": playbook, "cache": True}],
+    messages=[{"role": "user", "content": task}],
+    output_schema=SCHEMA,              # validated; one repair turn if it fails
+    tools=["excom.erp_read"],          # names from any app's `ai_tools` hook, or dicts with run()
+    allowed_tiers=("read",),           # read | draft | communicate | paid
+    effort="high", cache_ttl="1h",
+    calling_app="excom", reference_doctype="Excom Agent Task", reference_name=task.name,
+    action="handle_reply",
+)
+result.data, result.text, result.usage, result.log, result.tool_calls
+```
+
+- Same routing, fallback, budgets, cost and health as every other call. Providers whose adapter
+  cannot serve the request (no tools, no JSON) are skipped; `AI Provider Type` adapters declare
+  this in `FEATURES`.
+- Each model turn is an AI Call Log row; later turns point at the first through `parent_call`.
+  Cache read and write tokens are logged and costed (`cost_per_cache_read_token`,
+  `cost_per_cache_write_token` on the model, defaulting to 10% and 125% of the input rate).
+- A refusal raises `AIRefused` and is logged as `Refused`; an answer cut off at `max_tokens`
+  fails rather than returning half a JSON object.
+- Register a tool from any app:
+
+```python
+# hooks.py
+ai_tools = {"myapp.stock": "myapp.ai_tools.stock_spec"}
+
+def stock_spec():
+    return {"name": "stock", "description": "Stock on hand for an item",
+            "input_schema": {"type": "object", "properties": {"item": {"type": "string"}}},
+            "tier": "read", "run": lambda inp, ctx: get_stock(inp["item"])}
+```
+
 ### Shared arguments
 
 | Argument | Type | Purpose |

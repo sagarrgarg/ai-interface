@@ -36,6 +36,11 @@
     "base_cost",
     "base_currency",
     "latency_ms",
+    "stop_reason",
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "parent_call",
+    "step",
     "section_audit",
     "user"
   ],
@@ -150,7 +155,7 @@
       "fieldtype": "Select",
       "in_standard_filter": 1,
       "label": "Error Type",
-      "options": "\nAuth\nRate Limit\nTimeout\nInvalid Response\nProvider Error\nConfig Error\nFile Error\nUnknown",
+      "options": "\nAuth\nRate Limit\nTimeout\nInvalid Response\nProvider Error\nConfig Error\nFile Error\nRefused\nUnknown",
       "read_only": 1
     },
     {
@@ -258,6 +263,39 @@
       "read_only": 1
     },
     {
+      "fieldname": "stop_reason",
+      "fieldtype": "Data",
+      "label": "Stop Reason",
+      "read_only": 1,
+      "description": "Why the model stopped: end_turn, tool_use, max_tokens, refusal…"
+    },
+    {
+      "fieldname": "cache_read_tokens",
+      "fieldtype": "Int",
+      "label": "Cache Read Tokens",
+      "read_only": 1
+    },
+    {
+      "fieldname": "cache_write_tokens",
+      "fieldtype": "Int",
+      "label": "Cache Write Tokens",
+      "read_only": 1
+    },
+    {
+      "fieldname": "parent_call",
+      "fieldtype": "Link",
+      "options": "AI Call Log",
+      "label": "Parent Call",
+      "read_only": 1,
+      "description": "For a multi-step run (tool use, JSON repair): the first call of the run."
+    },
+    {
+      "fieldname": "step",
+      "fieldtype": "Int",
+      "label": "Step",
+      "read_only": 1
+    },
+    {
       "fieldname": "section_audit",
       "fieldtype": "Section Break",
       "label": "Audit"
@@ -272,7 +310,7 @@
   ],
   "index_web_pages_for_search": 0,
   "links": [],
-  "modified": "2026-05-01 00:00:00.000000",
+  "modified": "2026-11-09 12:00:00.000000",
   "modified_by": "Administrator",
   "module": "Ai Interface",
   "name": "AI Call Log",

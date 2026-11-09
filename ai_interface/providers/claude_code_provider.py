@@ -1,7 +1,35 @@
 import json
+import os
 import subprocess
+import tempfile
 
-from ai_interface.providers.base import BaseProvider, ProviderResponse
+from ai_interface.providers.base import BaseProvider, CompletionRequest, ProviderResponse
+
+# Run like Harvey does: no tools, no MCP servers, no user or project settings, no slash
+# commands, no saved session. A text-only call should never be able to touch the machine.
+ISOLATION_FLAGS = [
+	"--tools",
+	"",
+	"--strict-mcp-config",
+	"--safe-mode",
+	"--setting-sources",
+	"",
+	"--disable-slash-commands",
+	"--no-session-persistence",
+]
+_isolation_ok: bool | None = None
+
+
+def _cli_supports_isolation() -> bool:
+	"""Every isolation flag must be known to the installed CLI (checked once per process)."""
+	global _isolation_ok
+	if _isolation_ok is None:
+		try:
+			help_text = subprocess.run(["claude", "--help"], capture_output=True, text=True, timeout=30).stdout
+			_isolation_ok = all(f in help_text for f in ISOLATION_FLAGS if f.startswith("--"))
+		except Exception:
+			_isolation_ok = False
+	return _isolation_ok
 
 
 class ClaudeCodeProvider(BaseProvider):
@@ -71,6 +99,34 @@ class ClaudeCodeProvider(BaseProvider):
 		prompt = f"Read and analyze these files:\n{file_refs}\n\n{user_prompt}"
 		return self._run_claude(prompt, model, timeout, allow_read=True)
 
+	FEATURES = frozenset({"system", "json"})
+
+	def complete(
+		self,
+		request: CompletionRequest,
+		credential: str = "",
+		auth_type: str = "API Key",
+		api_base_url: str = "",
+		timeout: int = 120,
+	) -> ProviderResponse:
+		"""A full request as one prompt: the CLI takes text only. JSON is asked for in words
+		and validated by the caller."""
+		parts = []
+		system = "\n\n".join(b["text"] for b in request.system if b.get("text"))
+		if system:
+			parts.append(f"[System instructions]\n{system}")
+		for m in request.messages:
+			content = m["content"] if isinstance(m["content"], str) else json.dumps(m["content"], default=str)
+			parts.append(f"[{m['role']}]\n{content}")
+		if request.output_schema:
+			parts.append(
+				"Reply with only a JSON object (no prose, no code fence) matching this JSON Schema:\n"
+				+ json.dumps(request.output_schema)
+			)
+		response = self._run_claude("\n\n".join(parts), request.model, timeout)
+		response.stop_reason = "end_turn"
+		return response
+
 	def fetch_models(
 		self,
 		credential: str = "",
@@ -92,24 +148,20 @@ class ClaudeCodeProvider(BaseProvider):
 		timeout: int,
 		allow_read: bool = False,
 	) -> ProviderResponse:
-		cmd = [
-			"claude",
-			"-p",
-			prompt,
-			"--model",
-			model,
-			"--output-format",
-			"json",
-		]
-		if allow_read:
-			cmd.extend(["--allowedTools", "Read"])
-
-		result = subprocess.run(
-			cmd,
-			capture_output=True,
-			text=True,
-			timeout=timeout,
-		)
+		if not allow_read and _cli_supports_isolation():
+			# Prompt on stdin, from an empty folder, with a clean environment.
+			cmd = ["claude", "-p", "--model", model, "--output-format", "json", *ISOLATION_FLAGS]
+			env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")}
+			env["CLAUDE_CODE_SAFE_MODE"] = "1"
+			with tempfile.TemporaryDirectory(prefix="ai_interface_") as workdir:
+				result = subprocess.run(
+					cmd, input=prompt, capture_output=True, text=True, timeout=timeout, cwd=workdir, env=env
+				)
+		else:
+			cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json"]
+			if allow_read:
+				cmd.extend(["--allowedTools", "Read"])
+			result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 		if result.returncode != 0:
 			raise RuntimeError(f"Claude CLI failed: {result.stderr}")

@@ -16,6 +16,8 @@
     "section_pricing",
     "cost_per_input_token",
     "cost_per_output_token",
+    "cost_per_cache_read_token",
+    "cost_per_cache_write_token",
     "pricing_source"
   ],
   "fields": [
@@ -92,6 +94,20 @@
       "description": "Cost of one token in the provider billing currency."
     },
     {
+      "fieldname": "cost_per_cache_read_token",
+      "fieldtype": "Float",
+      "label": "Cost per Cache Read Token",
+      "precision": "9",
+      "description": "Prompt-cache reads. Blank: 10% of the input rate."
+    },
+    {
+      "fieldname": "cost_per_cache_write_token",
+      "fieldtype": "Float",
+      "label": "Cost per Cache Write Token",
+      "precision": "9",
+      "description": "Prompt-cache writes. Blank: 125% of the input rate."
+    },
+    {
       "fieldname": "pricing_source",
       "fieldtype": "Select",
       "label": "Pricing Source",
@@ -103,7 +119,7 @@
   "index_web_pages_for_search": 0,
   "istable": 1,
   "links": [],
-  "modified": "2026-05-01 00:00:00.000000",
+  "modified": "2026-11-09 12:00:00.000000",
   "modified_by": "Administrator",
   "module": "Ai Interface",
   "name": "AI Provider Model",

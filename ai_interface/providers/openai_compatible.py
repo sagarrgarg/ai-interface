@@ -12,7 +12,15 @@ import base64
 
 import requests
 
-from ai_interface.providers.base import BaseProvider, ProviderHTTPError, ProviderResponse
+import json
+
+from ai_interface.providers.base import (
+	BaseProvider,
+	CompletionRequest,
+	ProviderHTTPError,
+	ProviderResponse,
+	ToolCall,
+)
 
 MEDIA_SIGNATURES = (
 	(b"\x89PNG\r\n\x1a\n", "image/png"),
@@ -86,6 +94,75 @@ class OpenAICompatibleProvider(BaseProvider):
 		}
 		data = self._post(self._chat_url(api_base_url), payload, credential, timeout)
 		return self._to_response(data, model)
+
+	FEATURES = frozenset({"system", "json", "tools"})
+
+	def complete(
+		self,
+		request: CompletionRequest,
+		credential: str = "",
+		auth_type: str = "API Key",
+		api_base_url: str = "",
+		timeout: int = 120,
+	) -> ProviderResponse:
+		messages = []
+		system = "\n\n".join(b["text"] for b in request.system if b.get("text"))
+		if system:
+			messages.append({"role": "system", "content": system})
+		messages.extend(request.messages)
+		payload: dict = {"model": request.model, "messages": messages, "max_tokens": request.max_tokens}
+		if request.output_schema:
+			payload["response_format"] = {
+				"type": "json_schema",
+				"json_schema": {"name": "output", "schema": request.output_schema, "strict": True},
+			}
+		if request.tools:
+			payload["tools"] = [
+				{
+					"type": "function",
+					"function": {
+						"name": t["name"],
+						"description": t.get("description", ""),
+						"parameters": t["input_schema"],
+					},
+				}
+				for t in request.tools
+				if not t.get("type")  # vendor server tools have no equivalent here
+			]
+		data = self._post(self._chat_url(api_base_url), payload, credential, timeout)
+		choice = (data.get("choices") or [{}])[0]
+		message = choice.get("message") or {}
+		calls = []
+		for c in message.get("tool_calls") or []:
+			fn = c.get("function") or {}
+			try:
+				args = json.loads(fn.get("arguments") or "{}")
+			except ValueError:
+				args = {}
+			calls.append(ToolCall(id=c.get("id", ""), name=fn.get("name", ""), input=args))
+		if calls:
+			usage = data.get("usage") or {}
+			response = ProviderResponse(
+				content=message.get("content") or "",
+				input_tokens=usage.get("prompt_tokens") or 0,
+				output_tokens=usage.get("completion_tokens") or 0,
+				model=data.get("model") or request.model,
+				raw_response=data,
+			)
+		else:
+			response = self._to_response(data, request.model)
+		finish = choice.get("finish_reason") or ""
+		response.stop_reason = {"stop": "end_turn", "length": "max_tokens", "tool_calls": "tool_use"}.get(finish, finish)
+		response.tool_calls = calls
+		cached = ((data.get("usage") or {}).get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+		response.cache_read_tokens = cached
+		response.assistant_message = {k: v for k, v in message.items() if k in ("role", "content", "tool_calls")}
+		response.assistant_message.setdefault("role", "assistant")
+		return response
+
+	def tool_results_message(self, results: list[dict]) -> list:
+		# One "tool" message per call in this format.
+		return [{"role": "tool", "tool_call_id": r["id"], "content": r["content"]} for r in results]
 
 	def fetch_models(
 		self,
