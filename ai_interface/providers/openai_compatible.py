@@ -9,10 +9,9 @@ means installing an SDK.
 """
 
 import base64
+import json
 
 import requests
-
-import json
 
 from ai_interface.providers.base import (
 	BaseProvider,

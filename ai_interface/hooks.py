@@ -28,10 +28,18 @@ permission_query_conditions = {
 
 
 scheduler_events = {
+	"cron": {
+		# Collect batches the provider has finished (services/batch.py).
+		"*/5 * * * *": [
+			"ai_interface.services.batch.poll_open_batches",
+		],
+	},
 	"hourly": [
 		"ai_interface.services.ai_client.check_provider_health",
 	],
 	"daily": [
 		"ai_interface.ai_interface.doctype.ai_chat_conversation.ai_chat_conversation.clear_old_conversations",
+		# Empty prompt and answer text past its retention; rows and cost stay (services/privacy.py).
+		"ai_interface.services.privacy.purge_payloads",
 	],
 }

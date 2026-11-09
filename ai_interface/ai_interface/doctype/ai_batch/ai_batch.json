@@ -1,0 +1,203 @@
+{
+  "actions": [],
+  "creation": "2026-11-09 14:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "status",
+    "calling_app",
+    "action",
+    "budget_scope",
+    "cb1",
+    "provider",
+    "model",
+    "provider_batch_id",
+    "user",
+    "sb_counts",
+    "total",
+    "succeeded",
+    "failed",
+    "cb2",
+    "submitted_on",
+    "last_polled_on",
+    "ended_on",
+    "base_cost",
+    "sb_detail",
+    "output_schema",
+    "on_complete",
+    "error"
+  ],
+  "fields": [
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Submitted\nEnded\nFailed\nCancelled",
+      "default": "Submitted",
+      "read_only": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "calling_app",
+      "fieldtype": "Data",
+      "label": "Calling App",
+      "read_only": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "action",
+      "fieldtype": "Data",
+      "label": "Action",
+      "read_only": 1
+    },
+    {
+      "fieldname": "budget_scope",
+      "fieldtype": "Data",
+      "label": "Budget Scope",
+      "read_only": 1
+    },
+    {
+      "fieldname": "cb1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "provider",
+      "fieldtype": "Link",
+      "label": "Provider",
+      "options": "AI Provider",
+      "read_only": 1
+    },
+    {
+      "fieldname": "model",
+      "fieldtype": "Data",
+      "label": "Model",
+      "read_only": 1
+    },
+    {
+      "fieldname": "provider_batch_id",
+      "fieldtype": "Data",
+      "label": "Provider Batch ID",
+      "read_only": 1
+    },
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "label": "User",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sb_counts",
+      "fieldtype": "Section Break",
+      "label": "Progress"
+    },
+    {
+      "fieldname": "total",
+      "fieldtype": "Int",
+      "label": "Requests",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "succeeded",
+      "fieldtype": "Int",
+      "label": "Succeeded",
+      "read_only": 1
+    },
+    {
+      "fieldname": "failed",
+      "fieldtype": "Int",
+      "label": "Failed",
+      "read_only": 1
+    },
+    {
+      "fieldname": "cb2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "submitted_on",
+      "fieldtype": "Datetime",
+      "label": "Submitted On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_polled_on",
+      "fieldtype": "Datetime",
+      "label": "Last Checked",
+      "read_only": 1
+    },
+    {
+      "fieldname": "ended_on",
+      "fieldtype": "Datetime",
+      "label": "Ended On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "base_cost",
+      "fieldtype": "Float",
+      "label": "Cost (base currency)",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sb_detail",
+      "fieldtype": "Section Break",
+      "label": "Details",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "output_schema",
+      "fieldtype": "Code",
+      "label": "Output Schema",
+      "options": "JSON",
+      "read_only": 1
+    },
+    {
+      "fieldname": "on_complete",
+      "fieldtype": "Data",
+      "label": "On Complete",
+      "read_only": 1,
+      "description": "Dotted path called with the batch name when results are in."
+    },
+    {
+      "fieldname": "error",
+      "fieldtype": "Long Text",
+      "label": "Error",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-11-09 14:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Batch",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "AI Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "autoname": "hash",
+  "track_changes": 0
+}

@@ -59,7 +59,7 @@ from frappe import _
 
 from ai_interface.providers import get_provider
 from ai_interface.providers.base import CompletionRequest, ProviderRefusal
-from ai_interface.services import ai_client, budget, router
+from ai_interface.services import ai_client, budget, privacy, router
 
 DEFAULT_MAX_STEPS = 6
 TOOL_RESULT_LIMIT = 20000  # characters of one tool result sent back to the model
@@ -99,6 +99,8 @@ def run(
 	function_type: str = "Generation",
 	max_tokens: int | None = None,
 	user: str | None = None,
+	budget_scope: str | None = None,
+	budget_caps: dict | None = None,
 ) -> frappe._dict:
 	"""Run one full request to the end (synchronous: call it from a background job).
 
@@ -106,6 +108,7 @@ def run(
 	system: a string, or a list of strings or {"text", "cache"} blocks, stable content first.
 	tools: names from `ai_tools` hooks, caller tool dicts with a `run`, or server tool dicts.
 	allowed_tiers: the tool tiers this run may use; a tool outside them is refused.
+	budget_scope / budget_caps: charge the run to the caller's own scope, with its caps.
 	"""
 	settings = frappe.get_single("AI Settings")
 	user = user or frappe.session.user
@@ -126,7 +129,7 @@ def run(
 	if not module and reference_doctype:
 		module = ai_client._module_for_doctype(reference_doctype)
 
-	budget.check(settings, calling_app, user)
+	budget.check(settings, calling_app, user, scope=budget_scope, caps=budget_caps)
 
 	requirements = list(needs or [])
 	if (client_tools or server_tools) and "tools" not in requirements:
@@ -144,7 +147,9 @@ def run(
 	chain = [step for step in chain if _adapter_for(step["provider"]).supports(features)]
 	if not chain:
 		frappe.throw(
-			_("No configured provider can serve this request (it needs: {0}).").format(", ".join(sorted(features))),
+			_("No configured provider can serve this request (it needs: {0}).").format(
+				", ".join(sorted(features))
+			),
 			exc=router.RoutingError,
 		)
 
@@ -158,10 +163,18 @@ def run(
 			reference_name=reference_name,
 			module=module,
 			action=action,
+			budget_scope=budget_scope,
 		),
 		parent=None,
 		logs=[],
-		usage=frappe._dict(input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_write_tokens=0, cost=0.0, base_cost=0.0),
+		usage=frappe._dict(
+			input_tokens=0,
+			output_tokens=0,
+			cache_read_tokens=0,
+			cache_write_tokens=0,
+			cost=0.0,
+			base_cost=0.0,
+		),
 		started=time.time(),
 	)
 	request = CompletionRequest(
@@ -188,7 +201,9 @@ def run(
 		results = []
 		for call in response.tool_calls:
 			content, is_error = _run_tool(runners.get(call.name), call, user, state)
-			tool_log.append({"name": call.name, "input": call.input, "is_error": is_error, "result": content[:500]})
+			tool_log.append(
+				{"name": call.name, "input": call.input, "is_error": is_error, "result": content[:500]}
+			)
 			results.append({"id": call.id, "content": content, "is_error": is_error})
 		_append(request.messages, response.assistant_message)
 		_append(request.messages, adapter.tool_results_message(results))
@@ -300,8 +315,14 @@ def _turn(step, request, state):
 
 	if response.stop_reason == "max_tokens" and not response.tool_calls:
 		error_type = "Invalid Response"
-		log.db_set({"status": "Failed", "error_type": error_type, "stop_reason": response.stop_reason,
-			"error_message": "The answer was cut off at max_tokens."})
+		log.db_set(
+			{
+				"status": "Failed",
+				"error_type": error_type,
+				"stop_reason": response.stop_reason,
+				"error_message": "The answer was cut off at max_tokens.",
+			}
+		)
 		frappe.db.commit()
 		failure = AIRequestFailed(_("The answer was cut off at max_tokens; raise max_tokens for this call."))
 		failure.error_type = error_type
@@ -315,7 +336,13 @@ def _turn(step, request, state):
 			"status": "Completed",
 			"model": response.model or step["model"],
 			"attempts": 1,
-			"output_text": (response.content or json.dumps([c.__dict__ for c in response.tool_calls], default=str)) if keep else "",
+			"output_text": privacy.for_storage(
+				response.content or json.dumps([c.__dict__ for c in response.tool_calls], default=str),
+				state.attribution["calling_app"],
+				settings,
+			)
+			if keep
+			else "",
 			"input_tokens": response.input_tokens,
 			"output_tokens": response.output_tokens,
 			"cache_read_tokens": response.cache_read_tokens,
@@ -386,10 +413,14 @@ def _resolve_tools(tools, user, allowed_tiers):
 		if tier not in TIERS:
 			frappe.throw(_("AI tool {0} has an unknown tier {1}").format(spec.get("name"), tier))
 		if tier not in allowed_tiers:
-			frappe.throw(_("AI tool {0} is a '{1}' tool, not allowed in this run").format(spec.get("name"), tier))
+			frappe.throw(
+				_("AI tool {0} is a '{1}' tool, not allowed in this run").format(spec.get("name"), tier)
+			)
 		permitted = spec.get("permitted")
 		if permitted and not permitted(user):
-			frappe.throw(_("{0} may not use the AI tool {1}").format(user, spec.get("name")), frappe.PermissionError)
+			frappe.throw(
+				_("{0} may not use the AI tool {1}").format(user, spec.get("name")), frappe.PermissionError
+			)
 		if not callable(spec.get("run")):
 			frappe.throw(_("AI tool {0} has no run function").format(spec.get("name")))
 		client.append(spec)
@@ -456,7 +487,10 @@ def _append(messages: list, item):
 
 def _estimate_text(system_blocks, convo) -> str:
 	parts = [b["text"] for b in system_blocks]
-	parts += [m["content"] if isinstance(m.get("content"), str) else json.dumps(m.get("content"), default=str) for m in convo]
+	parts += [
+		m["content"] if isinstance(m.get("content"), str) else json.dumps(m.get("content"), default=str)
+		for m in convo
+	]
 	return "\n".join(parts)
 
 
@@ -464,7 +498,9 @@ def _transcript(request) -> str:
 	"""What the first log row keeps as its input (subject to enable_logging)."""
 	parts = [f"[system]\n{b['text']}" for b in request.system]
 	for m in request.messages:
-		content = m["content"] if isinstance(m.get("content"), str) else json.dumps(m.get("content"), default=str)
+		content = (
+			m["content"] if isinstance(m.get("content"), str) else json.dumps(m.get("content"), default=str)
+		)
 		parts.append(f"[{m.get('role')}]\n{content}")
 	if request.output_schema:
 		parts.append("[output schema]\n" + json.dumps(request.output_schema))
@@ -502,3 +538,54 @@ def _parse_json(text: str, schema: dict):
 def _adapter_for(provider_name: str):
 	doc = frappe.get_cached_doc("AI Provider", provider_name)
 	return get_provider(doc.provider_type)
+
+
+# ---------------------------------------------------------------- in the background
+
+
+def run_async(
+	*, on_complete: str | None = None, queue: str = "long", job_context: dict | None = None, **kwargs
+) -> str:
+	"""Queue run() as a background job and return the job id.
+
+	Everything must be serialisable: tools by hook name or as server tool dicts, not callables.
+	When the job ends, the user gets a realtime event (`ai_run_complete` or `ai_run_failed`, with
+	the job id and the first log's name), and `on_complete`, a dotted path, is called as
+	on_complete(result=dict or None, error=str or None, context=job_context).
+	"""
+	for t in kwargs.get("tools") or []:
+		if not isinstance(t, (str, dict)) or (isinstance(t, dict) and not t.get("type")):
+			frappe.throw(_("In a background run, tools must be hook names or server tools."))
+	user = kwargs.pop("user", None) or frappe.session.user
+	job_id = f"ai_run::{frappe.generate_hash(length=12)}"
+	frappe.enqueue(
+		"ai_interface.services.chat._run_job",
+		queue=queue,
+		job_id=job_id,
+		enqueue_after_commit=True,
+		run_kwargs=kwargs,
+		user=user,
+		on_complete=on_complete,
+		job_context=job_context or {},
+		job_name=job_id,
+	)
+	return job_id
+
+
+def _run_job(run_kwargs: dict, user: str, on_complete: str | None, job_context: dict, job_name: str):
+	result, error = None, None
+	try:
+		result = run(user=user, **run_kwargs)
+	except Exception as e:
+		error = str(e)
+		frappe.log_error(title="AI run failed", message=frappe.get_traceback())
+	payload = {"job": job_name, "log": result.log if result else None, "error": error}
+	frappe.publish_realtime("ai_run_failed" if error else "ai_run_complete", payload, user=user)
+	if on_complete:
+		try:
+			frappe.get_attr(on_complete)(
+				result=dict(result) if result else None, error=error, context=job_context
+			)
+		except Exception:
+			frappe.log_error(title=f"AI run callback failed: {on_complete}", message=frappe.get_traceback())
+	frappe.db.commit()

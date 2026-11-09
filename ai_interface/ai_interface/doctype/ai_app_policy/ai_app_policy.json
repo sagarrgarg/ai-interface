@@ -1,0 +1,51 @@
+{
+  "actions": [],
+  "creation": "2026-11-09 14:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "calling_app",
+    "payload_retention_days",
+    "redact_contacts"
+  ],
+  "fields": [
+    {
+      "fieldname": "calling_app",
+      "fieldtype": "Data",
+      "label": "Calling App",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "payload_retention_days",
+      "fieldtype": "Int",
+      "label": "Keep Prompts (days)",
+      "in_list_view": 1,
+      "columns": 2,
+      "description": "Prompt and answer text of this app's calls is emptied after this many days; the row and its cost stay. 0 = the global setting."
+    },
+    {
+      "fieldname": "redact_contacts",
+      "fieldtype": "Select",
+      "label": "Redact Contacts",
+      "options": "\nYes\nNo",
+      "in_list_view": 1,
+      "columns": 2,
+      "description": "Store prompts and answers with email addresses and phone numbers masked. Blank = the global setting."
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-11-09 14:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI App Policy",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "istable": 1
+}

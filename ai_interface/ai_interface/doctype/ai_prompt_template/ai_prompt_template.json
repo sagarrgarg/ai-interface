@@ -13,7 +13,11 @@
     "section_template",
     "body",
     "section_meta",
-    "variables"
+    "variables",
+    "section_eval",
+    "eval_set",
+    "last_eval_run",
+    "last_eval_score"
   ],
   "fields": [
     {
@@ -72,11 +76,36 @@
       "fieldtype": "Small Text",
       "description": "JSON list of expected variable names, e.g. [\"customer_name\", \"order_id\"]",
       "label": "Variables"
+    },
+    {
+      "fieldname": "section_eval",
+      "fieldtype": "Section Break",
+      "label": "Evaluation"
+    },
+    {
+      "fieldname": "eval_set",
+      "fieldtype": "Link",
+      "label": "Eval Set",
+      "options": "AI Eval Set",
+      "description": "Golden cases this template must pass before a change is trusted."
+    },
+    {
+      "fieldname": "last_eval_run",
+      "fieldtype": "Link",
+      "label": "Last Eval Run",
+      "options": "AI Eval Run",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_eval_score",
+      "fieldtype": "Percent",
+      "label": "Last Eval Score",
+      "read_only": 1
     }
   ],
   "index_web_pages_for_search": 0,
   "links": [],
-  "modified": "2026-05-01 00:00:00.000000",
+  "modified": "2026-11-09 14:00:00.000000",
   "modified_by": "Administrator",
   "module": "Ai Interface",
   "name": "AI Prompt Template",

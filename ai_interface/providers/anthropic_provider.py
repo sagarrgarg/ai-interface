@@ -5,6 +5,7 @@ import anthropic
 from ai_interface.providers.base import (
 	BaseProvider,
 	CompletionRequest,
+	ProviderHTTPError,
 	ProviderRefusal,
 	ProviderResponse,
 	ToolCall,
@@ -101,7 +102,7 @@ class AnthropicProvider(BaseProvider):
 
 		return self._to_response(client.messages.create(**kwargs))
 
-	FEATURES = frozenset({"system", "json", "tools", "server_tools", "cache", "effort"})
+	FEATURES = frozenset({"system", "json", "tools", "server_tools", "cache", "effort", "batch"})
 
 	def complete(
 		self,
@@ -112,8 +113,62 @@ class AnthropicProvider(BaseProvider):
 		timeout: int = 120,
 	) -> ProviderResponse:
 		client = self._get_client(credential, auth_type, api_base_url, timeout)
-		ttl = {"type": "ephemeral", "ttl": request.cache_ttl} if request.cache_ttl == "1h" else {"type": "ephemeral"}
+		response = client.messages.create(**self._params(request, auth_type))
+		self._raise_if_refused(response)
+		return self._to_response(response, assistant_turn=True)
 
+	# ---- batches (half price, results within hours)
+
+	def submit_batch(self, items, credential="", auth_type="API Key", api_base_url="", timeout=120) -> str:
+		"""items: [(custom_id, CompletionRequest)]. Returns the provider's batch id."""
+		client = self._get_client(credential, auth_type, api_base_url, timeout)
+		batch = client.messages.batches.create(
+			requests=[{"custom_id": cid, "params": self._params(req, auth_type)} for cid, req in items]
+		)
+		return batch.id
+
+	def batch_status(
+		self, batch_id, credential="", auth_type="API Key", api_base_url="", timeout=120
+	) -> dict:
+		client = self._get_client(credential, auth_type, api_base_url, timeout)
+		batch = client.messages.batches.retrieve(batch_id)
+		counts = batch.request_counts
+		return {
+			"ended": batch.processing_status == "ended",
+			"status": batch.processing_status,
+			"succeeded": counts.succeeded,
+			"errored": counts.errored + counts.canceled + counts.expired,
+			"processing": counts.processing,
+		}
+
+	def batch_results(self, batch_id, credential="", auth_type="API Key", api_base_url="", timeout=120):
+		"""Yields (custom_id, ProviderResponse or an exception), in any order."""
+		client = self._get_client(credential, auth_type, api_base_url, timeout)
+		for item in client.messages.batches.results(batch_id):
+			outcome = item.result
+			if outcome.type == "succeeded":
+				try:
+					self._raise_if_refused(outcome.message)
+					yield item.custom_id, self._to_response(outcome.message)
+				except ProviderRefusal as e:
+					yield item.custom_id, e
+			else:
+				error = getattr(getattr(outcome, "error", None), "error", None) or getattr(
+					outcome, "error", None
+				)
+				detail = getattr(error, "message", None) or getattr(error, "type", None) or ""
+				yield item.custom_id, ProviderHTTPError(f"Batch request {outcome.type}: {detail}".strip(": "))
+
+	def cancel_batch(self, batch_id, credential="", auth_type="API Key", api_base_url="", timeout=120):
+		self._get_client(credential, auth_type, api_base_url, timeout).messages.batches.cancel(batch_id)
+
+	def _params(self, request: CompletionRequest, auth_type: str) -> dict:
+		"""The Messages API parameters for a request; the same for a live call and a batch."""
+		ttl = (
+			{"type": "ephemeral", "ttl": request.cache_ttl}
+			if request.cache_ttl == "1h"
+			else {"type": "ephemeral"}
+		)
 		system = []
 		if auth_type == "Auth Token":
 			system.append({"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX})
@@ -123,7 +178,11 @@ class AnthropicProvider(BaseProvider):
 				entry["cache_control"] = ttl
 			system.append(entry)
 
-		kwargs: dict = {"model": request.model, "max_tokens": request.max_tokens, "messages": request.messages}
+		kwargs: dict = {
+			"model": request.model,
+			"max_tokens": request.max_tokens,
+			"messages": request.messages,
+		}
 		if system:
 			kwargs["system"] = system
 		if request.tools:
@@ -135,14 +194,15 @@ class AnthropicProvider(BaseProvider):
 			output_config["format"] = {"type": "json_schema", "schema": request.output_schema}
 		if output_config:
 			kwargs["output_config"] = output_config
+		return kwargs
 
-		response = client.messages.create(**kwargs)
+	@staticmethod
+	def _raise_if_refused(response):
 		if response.stop_reason == "refusal":
 			details = getattr(response, "stop_details", None)
 			raise ProviderRefusal(
 				f"The model declined this request ({getattr(details, 'category', None) or 'no category'})"
 			)
-		return self._to_response(response, assistant_turn=True)
 
 	def tool_results_message(self, results: list[dict]) -> dict:
 		# All results go back in one user message, so the model keeps calling tools in parallel.
@@ -163,7 +223,11 @@ class AnthropicProvider(BaseProvider):
 	def _tool(tool: dict) -> dict:
 		if tool.get("type"):  # a server tool (web search, web fetch…), passed through
 			return tool
-		spec = {"name": tool["name"], "description": tool.get("description", ""), "input_schema": tool["input_schema"]}
+		spec = {
+			"name": tool["name"],
+			"description": tool.get("description", ""),
+			"input_schema": tool["input_schema"],
+		}
 		if tool.get("strict"):
 			spec["strict"] = True
 		return spec

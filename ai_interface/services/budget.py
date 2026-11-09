@@ -4,6 +4,13 @@ The dashboard already shows what was spent; this is what stops it. Checks run
 before a call is queued, so a blocked call costs nothing, and they read the
 normalised `base_cost` so a mix of INR and USD providers is measured against one
 budget.
+
+Scopes: besides the global, per-app and per-user caps, an app can charge a call
+to a scope of its own (`budget_scope`, for example "Excom Agent:AG-0001") and pass
+the caps it owns for that scope (`budget_caps`). Admins can add caps for scopes in
+AI Settings (exact, or a prefix ending in *, which caps every matching scope on its
+own). Scope caps hold even when the global budget switch is off: they belong to the
+caller, who set them deliberately.
 """
 
 import frappe
@@ -17,25 +24,37 @@ class BudgetExceeded(frappe.ValidationError):
 	pass
 
 
-def check(settings, calling_app: str = "", user: str | None = None) -> dict | None:
+def check(
+	settings,
+	calling_app: str = "",
+	user: str | None = None,
+	scope: str | None = None,
+	caps: dict | None = None,
+) -> dict | None:
 	"""Enforce caps before a call is queued.
 
 	Returns the breach that fired (or None). Raises when the applicable action
 	is Block. Never raises for a Warn — a cap the user has not yet decided to
 	enforce should not take five apps offline.
+
+	scope / caps: the caller's own budget scope and its caps
+	({"daily": 5.0, "monthly": 100.0, "action": "Block"}, in base currency).
 	"""
+	limits = _limits(settings, calling_app, user, scope, caps)
 	if not settings.get("enable_budget"):
+		limits = [row for row in limits if row[0] == "scope"]
+	if not limits:
 		return None
 
 	breaches = []
-	spend = _spend(calling_app, user)
+	spend = _spend(calling_app, user, scope)
 
-	for scope, label, limits, action in _limits(settings, calling_app, user):
-		for period, cap in limits.items():
+	for scope_key, label, limits_, action in limits:
+		for period, cap in limits_.items():
 			cap = flt(cap)
 			if cap <= 0:
 				continue
-			used = spend[scope][period]
+			used = spend[scope_key][period]
 			pct = used * 100.0 / cap
 			if used >= cap:
 				breaches.append({
@@ -65,7 +84,7 @@ def check(settings, calling_app: str = "", user: str | None = None) -> dict | No
 	return worst
 
 
-def _limits(settings, calling_app: str, user: str | None = None):
+def _limits(settings, calling_app: str, user: str | None = None, scope: str | None = None, caps: dict | None = None):
 	"""(scope key, human label, {period: cap}, action) for every applicable cap."""
 	default_action = settings.get("budget_action") or "Warn"
 	out = [(
@@ -92,10 +111,28 @@ def _limits(settings, calling_app: str, user: str | None = None):
 		if flt(per_user) > 0:
 			out.append(("user", user, {"daily": per_user}, default_action))
 
+	if scope:
+		for row in settings.get("scope_budgets") or []:
+			pattern = (row.scope or "").strip()
+			if pattern == scope or (pattern.endswith("*") and scope.startswith(pattern[:-1])):
+				out.append((
+					"scope",
+					scope,
+					{"daily": row.daily_budget, "monthly": row.monthly_budget},
+					row.budget_action or default_action,
+				))
+		if caps:
+			out.append((
+				"scope",
+				scope,
+				{"daily": caps.get("daily"), "monthly": caps.get("monthly")},
+				caps.get("action") or default_action,
+			))
+
 	return out
 
 
-def _spend(calling_app: str, user: str | None = None) -> dict:
+def _spend(calling_app: str, user: str | None = None, scope: str | None = None) -> dict:
 	"""Spend so far today and this calendar month, in base currency."""
 	today = nowdate()
 	month_start = get_first_day(today)
@@ -124,6 +161,9 @@ def _spend(calling_app: str, user: str | None = None) -> dict:
 	if user:
 		u_daily, u_monthly = total("AND user = %(user)s", {**params, "user": user})
 		spend["user"] = {"daily": u_daily, "monthly": u_monthly}
+	if scope:
+		s_daily, s_monthly = total("AND budget_scope = %(scope)s", {**params, "scope": scope})
+		spend["scope"] = {"daily": s_daily, "monthly": s_monthly}
 	return spend
 
 

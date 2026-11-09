@@ -234,6 +234,72 @@ def stock_spec():
             "tier": "read", "run": lambda inp, ctx: get_stock(inp["item"])}
 ```
 
+### run_async() — the same, in the background
+
+```python
+from ai_interface.services.chat import run_async
+
+job = run_async(prompt=..., tools=["excom.erp_read"], calling_app="excom",
+                on_complete="excom.excom_ai.engine.after_reply",   # called as fn(result, error, context)
+                job_context={"task": task.name})
+```
+
+Tools must be hook names or server tools (callables cannot be queued). The user gets
+`ai_run_complete` or `ai_run_failed` over realtime with the job id and the first log.
+
+### batch.submit() — many requests at the batch discount
+
+For work nobody is waiting on. The provider answers within hours (Anthropic: at most 24) at its
+batch price (`batch_discount_percent` on the provider type, 50 by default).
+
+```python
+from ai_interface.services import batch
+
+name = batch.submit(
+    [{"key": lead.name, "prompt": text, "reference_doctype": "Lead", "reference_name": lead.name}
+     for lead, text in work],
+    system=[{"text": persona, "cache": True}], output_schema=SCHEMA,
+    calling_app="excom", action="profile_company",
+    on_complete="excom.excom_ai.engine.night.batch_done",   # called with the AI Batch name
+)
+for item in batch.results(name):
+    item.key, item.status, item.data, item.text, item.error, item.log
+```
+
+- One AI Call Log per request (`batch`, `batch_key`); the provider's custom id is the log name.
+- `poll_open_batches` runs every 5 minutes; the AI Batch form has **Check now** and **Cancel**.
+- JSON answers are checked against the batch's schema; a bad one fails that request only.
+- Answers are kept until `on_complete` has run, even with logging off; after that the logging,
+  redaction and retention rules apply. Without `on_complete`, read `results()` in time.
+- A batch still open after 30 hours is marked Failed.
+
+### evals — golden cases before a change is trusted
+
+An **AI Eval Set** names a target (a callable that runs the app's real prompt, or a prompt
+template) and its cases (input, expected, checks). A run scores passed / total against the set's
+threshold.
+
+```python
+from ai_interface.services import evals
+
+evals.start("Excom reply classifier", notes="prompt v7")   # background; returns the run
+evals.run_set("Excom reply classifier")                      # now
+evals.gate("Excom reply classifier", notes="model change")   # True if it passes
+```
+
+| Check | Example |
+|---|---|
+| `equals`, `one_of` | `{"type": "equals", "path": "intent", "value": "question"}` |
+| `contains`, `not_contains` | case-insensitive text match at a path, or in the whole output |
+| `regex` | `{"type": "regex", "path": "reply", "value": "\\$\\d"}` |
+| `max_words`, `min_words` | `{"type": "max_words", "path": "reply", "value": 80}` |
+| `json_schema` | the output (or a path) against a schema |
+| `judge` | `{"type": "judge", "criteria": "Polite, in Spanish"}` — a model grades it (logged, costed) |
+
+`expected` is a subset match for objects (every key given must equal) or an exact match for
+text. Calls made while a case runs are tagged `eval_run` and summed into the case's cost. The last
+run and score are kept on the set and on any prompt template that points at it.
+
 ### Shared arguments
 
 | Argument | Type | Purpose |
@@ -247,6 +313,8 @@ def stock_spec():
 | `provider` / `model` | str | Hard override. Wins over every rule — use sparingly. |
 | `template` | str | An `AI Prompt Template` name; combine with `context`. |
 | `max_tokens` | int | Ceiling, not a charge. Raise it for reasoning models. |
+| `budget_scope` | str | A scope of the caller's own to charge, e.g. `Excom Agent:AG-0001`. |
+| `budget_caps` | dict | The caller's caps for that scope: `{"daily": 5, "monthly": 100, "action": "Block"}`, base currency. |
 
 ### Collecting an async result
 
@@ -377,6 +445,39 @@ rates. *Test Connection* — one small billed call on the cheapest enabled model
 | `provider_override` | Link | Force a provider. Beats routing rules. |
 | `model_override` | Data | Force a model. |
 
+### AI Scope Budget — *child of AI Settings*
+
+`scope` (exact, or a prefix ending in `*`), `daily_budget`, `monthly_budget`, `budget_action`
+(blank = global). See §9.
+
+### AI App Policy — *child of AI Settings*
+
+`calling_app`, `payload_retention_days` (0 = global), `redact_contacts` (Yes / No / blank =
+global). See §9a.
+
+### AI Batch — *autoname: hash*
+
+One batch submission: `status` (Submitted → Ended / Failed / Cancelled), `calling_app`, `action`,
+`budget_scope`, `provider`, `model`, `provider_batch_id`, `total` / `succeeded` / `failed`,
+`submitted_on` / `last_polled_on` / `ended_on`, `base_cost`, `output_schema`, `on_complete`,
+`error`. Its requests are AI Call Log rows with `batch` set.
+
+### AI Eval Set — *autoname: `eval_name`*
+
+`calling_app`, `action`, `target_type` (Callable / Prompt Template), `target` or
+`prompt_template`, `pass_threshold`, `cases` (AI Eval Case: `case_name`, `enabled`, `input`,
+`expected`, `checks`, `notes`), `last_run`, `last_score`. **Run now** on the form.
+
+### AI Eval Run — *autoname: hash*
+
+`eval_set`, `status` (Running / Passed / Failed / Error), `score`, `threshold`, `notes` (what
+changed), counts, `base_cost`, `results` (AI Eval Result: case, passed, failures, output, log,
+latency, cost), `triggered_by`.
+
+AI Prompt Template also carries `eval_set`, `last_eval_run` and `last_eval_score`; AI Provider
+Type carries `batch_discount_percent`; AI Provider Model carries `cost_per_cache_read_token` and
+`cost_per_cache_write_token` (blank: 10% and 125% of the input rate).
+
 ### AI Call Log — *autoname: hash*
 
 One row per call: the audit trail, the async delivery channel, and the sole data source for
@@ -394,7 +495,7 @@ the dashboard. All fields read-only.
 | Field | For |
 |---|---|
 | `input_text` / `output_text` | Retained only while `enable_logging` is on. |
-| `error_type` | `Auth · Rate Limit · Timeout · Invalid Response · Provider Error · Config Error · File Error · Unknown`. Derived from HTTP status, not error text. |
+| `error_type` | `Auth · Rate Limit · Timeout · Invalid Response · Provider Error · Config Error · File Error · Refused · Unknown`. Derived from HTTP status, not error text. `Refused`: the model declined. |
 | `error_message` | Full trail. **Kept even on success** if an earlier provider failed first. |
 | `input_tokens` / `output_tokens` | As reported by the vendor. |
 | `currency` | What the serving provider bills in. |
@@ -403,9 +504,17 @@ the dashboard. All fields read-only.
 | `base_cost` | **What every dashboard total sums.** |
 | `base_currency` | The base at the time of the call. |
 | `latency_ms` | Wall-clock for the attempt that answered. |
+| `cache_read_tokens` / `cache_write_tokens` | Prompt-cache traffic, costed at the model's cache rates. |
+| `stop_reason` | `end_turn`, `tool_use`, `max_tokens`, `refusal`… |
+| `parent_call` / `step` | For run(): later turns point at the first. |
+| `budget_scope` | The scope the call was charged to. |
+| `batch` / `batch_key` | For batch requests: the AI Batch and the caller's key. |
+| `eval_run` | Set when an evaluation run made the call. |
+| `payload_purged` | The text was emptied by the retention policy; tokens and cost kept. |
 
 **Indexes** (`on_doctype_update()`): `(status, creation)`, `(calling_app, creation)`,
-`(module, creation)`, `(reference_doctype)`, `(provider, model)`.
+`(module, creation)`, `(reference_doctype)`, `(provider, model)`, `(budget_scope, creation)`, `(batch)`,
+`(payload_purged, creation)`.
 
 ---
 
@@ -469,7 +578,11 @@ between ₹ and $ is a lens over the same history, never a rewrite.
 Checked before a call is enqueued, so a blocked call costs nothing. Measured against
 `base_cost`, so mixed-currency providers sit under one budget.
 
-- **Scopes:** global and per calling app; daily and monthly (calendar).
+- **Scopes:** global, per calling app and per user; daily and monthly (calendar).
+- **Caller scopes:** an app charges a call to a scope of its own (`budget_scope`, for example one
+  AI agent) and may pass its caps (`budget_caps`). Admins add caps per scope in **Scope Budgets**:
+  an exact scope, or a prefix ending in `*`, which caps every matching scope on its own. Scope
+  caps hold even when the global budget switch is off, because their owner set them on purpose.
 - **Warn** notifies System Managers and lets the call through.
 - **Block** refuses before it costs anything. If any applicable rule says Block, Block wins.
 - **Alerts** fire at `budget_alert_threshold`, throttled to one per scope per day.
@@ -478,6 +591,17 @@ Start with **Warn**. A hard block that silently breaks five apps' AI features is
 first experience than an alert.
 
 ---
+
+## 9a. Privacy and retention
+
+The call row (who, what record, model, tokens, cost) is the audit trail and stays. The prompt and
+answer *text* is governed separately, globally and per app (**Per-App Policies**):
+
+- **Redact contacts** masks email addresses and phone numbers in the stored copy (`[email]`,
+  `[phone]`). Dates, document numbers and prices are left alone. The model sees the real text.
+- **Keep prompts (days)**: every night `purge_payloads` empties older text and marks the row
+  `payload_purged`. 0 keeps it.
+- `enable_logging` off still means no text is stored at all.
 
 ## 10. Provider health
 
@@ -558,6 +682,15 @@ ruff check ai_interface/ && ruff format ai_interface/
 | `backfill_base_cost` | Copies `cost` into `base_cost` at rate 1 for pre-currency history; sets base to USD. |
 | `sarvam_chat_path_v1` | Moves seeded Sarvam records off the beta-gated `/v2`, leaving deliberate overrides alone. |
 
+### Scheduled jobs
+
+| Job | When | Does |
+|---|---|---|
+| `batch.poll_open_batches` | every 5 minutes | collects finished batches, calls `on_complete` |
+| `ai_client.check_provider_health` | hourly | pings idle providers when health checks are on |
+| `privacy.purge_payloads` | daily | empties prompt text past its retention |
+| `clear_old_conversations` | daily | assistant conversations past their retention |
+
 ### Roles
 
 - **System Manager** — full access. Required for Fetch Models and Test Connection.
@@ -576,10 +709,8 @@ other data source.
 
 ### Known gaps
 
-- **No automated test suite.** Behaviour has been verified by hand and against live
-  accounts, but nothing guards it against the next change.
-- **Test Connection calls are not written to AI Call Log**, so that (small) spend is
-  untracked.
-- **Scheduled health checks are not implemented** — health updates only when real calls run.
 - **Sarvam's non-chat APIs** (TTS, STT, translate, transliterate) do not fit the
   chat/vision contract and would need their own function type.
+- **Batches** are implemented for Anthropic; the OpenAI-format adapter has none yet.
+- **Live verification:** the adapters are tested against mocked clients; run one real call per
+  provider after configuring it (Test Connection, then a small `run()`).

@@ -60,6 +60,10 @@ ai_interface/
     vision.py           # extract(file_url, prompt) → extracted text
     query_engine.py     # query(question) → NL answer from ERPNext data
     chat.py             # run(): system + messages, JSON schema, tools (ai_tools hook), caching, effort
+    batch.py            # submit() many requests at the batch discount; poll, results, on_complete
+    evals.py            # eval sets: golden cases, checks, scores, gate() before trusting a change
+    privacy.py          # redaction of stored prompts and nightly retention purge
+    budget.py           # spend caps: global, per app, per user, per caller scope
   ai_interface/         # Frappe module — doctypes
     doctype/
       ai_settings/      # Single: default provider, model, timeouts, base currency

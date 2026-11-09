@@ -1,0 +1,150 @@
+{
+  "actions": [],
+  "creation": "2026-11-09 14:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "eval_name",
+    "calling_app",
+    "action",
+    "cb1",
+    "target_type",
+    "target",
+    "prompt_template",
+    "pass_threshold",
+    "sb_cases",
+    "cases",
+    "sb_last",
+    "last_run",
+    "last_score",
+    "cb2",
+    "description"
+  ],
+  "fields": [
+    {
+      "fieldname": "eval_name",
+      "fieldtype": "Data",
+      "label": "Name",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "calling_app",
+      "fieldtype": "Data",
+      "label": "Calling App",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "action",
+      "fieldtype": "Data",
+      "label": "Action",
+      "in_list_view": 1,
+      "description": "The action this set guards, e.g. classify_reply."
+    },
+    {
+      "fieldname": "cb1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "target_type",
+      "fieldtype": "Select",
+      "label": "Target",
+      "options": "Callable\nPrompt Template",
+      "default": "Callable",
+      "reqd": 1
+    },
+    {
+      "fieldname": "target",
+      "fieldtype": "Data",
+      "label": "Callable",
+      "depends_on": "eval:doc.target_type=='Callable'",
+      "description": "Dotted path of a function taking a case's input (dict) and returning the output (dict or text): the app's real prompt and settings."
+    },
+    {
+      "fieldname": "prompt_template",
+      "fieldtype": "Link",
+      "label": "Prompt Template",
+      "options": "AI Prompt Template",
+      "depends_on": "eval:doc.target_type=='Prompt Template'"
+    },
+    {
+      "fieldname": "pass_threshold",
+      "fieldtype": "Percent",
+      "label": "Pass Threshold",
+      "default": "100",
+      "description": "Share of cases that must pass."
+    },
+    {
+      "fieldname": "sb_cases",
+      "fieldtype": "Section Break",
+      "label": "Cases"
+    },
+    {
+      "fieldname": "cases",
+      "fieldtype": "Table",
+      "label": "Cases",
+      "options": "AI Eval Case"
+    },
+    {
+      "fieldname": "sb_last",
+      "fieldtype": "Section Break",
+      "label": "Last Run"
+    },
+    {
+      "fieldname": "last_run",
+      "fieldtype": "Link",
+      "label": "Last Run",
+      "options": "AI Eval Run",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_score",
+      "fieldtype": "Percent",
+      "label": "Last Score",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "cb2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "label": "Description"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-11-09 14:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Eval Set",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "AI Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "autoname": "field:eval_name",
+  "title_field": "eval_name"
+}

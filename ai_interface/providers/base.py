@@ -118,7 +118,7 @@ class BaseProvider(ABC):
 
 	# ---- full requests (system, messages, schema, tools, caching, effort)
 
-	#: What complete() can do: "system", "json", "tools", "server_tools", "cache", "effort".
+	#: What complete() can do: "system", "json", "tools", "server_tools", "cache", "effort", "batch".
 	#: The chat service skips a provider that lacks a feature the request needs.
 	FEATURES: frozenset = frozenset()
 
@@ -135,6 +135,25 @@ class BaseProvider(ABC):
 	) -> ProviderResponse:
 		"""One turn of a full request. Adapters that support it override this."""
 		raise ProviderHTTPError(f"{type(self).__name__} does not support full requests (not configured)")
+
+	# ---- batches: adapters with "batch" in FEATURES override these
+
+	def submit_batch(self, items, credential="", auth_type="API Key", api_base_url="", timeout=120) -> str:
+		"""items: [(custom_id, CompletionRequest)]. Returns the provider's batch id."""
+		raise ProviderHTTPError(f"{type(self).__name__} does not support batches (not configured)")
+
+	def batch_status(
+		self, batch_id, credential="", auth_type="API Key", api_base_url="", timeout=120
+	) -> dict:
+		"""{"ended": bool, "status": str, "succeeded": int, "errored": int, "processing": int}"""
+		raise ProviderHTTPError(f"{type(self).__name__} does not support batches (not configured)")
+
+	def batch_results(self, batch_id, credential="", auth_type="API Key", api_base_url="", timeout=120):
+		"""Yields (custom_id, ProviderResponse or an exception)."""
+		raise ProviderHTTPError(f"{type(self).__name__} does not support batches (not configured)")
+
+	def cancel_batch(self, batch_id, credential="", auth_type="API Key", api_base_url="", timeout=120):
+		raise ProviderHTTPError(f"{type(self).__name__} does not support batches (not configured)")
 
 	def tool_results_message(self, results: list[dict]) -> dict:
 		"""The message carrying tool results back, in this adapter's wire format.

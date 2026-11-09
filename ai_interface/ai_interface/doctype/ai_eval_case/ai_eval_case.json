@@ -1,0 +1,72 @@
+{
+  "actions": [],
+  "creation": "2026-11-09 14:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "case_name",
+    "enabled",
+    "input",
+    "expected",
+    "checks",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "case_name",
+      "fieldtype": "Data",
+      "label": "Case",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Enabled",
+      "default": "1",
+      "in_list_view": 1,
+      "columns": 1
+    },
+    {
+      "fieldname": "input",
+      "fieldtype": "Code",
+      "label": "Input",
+      "options": "JSON",
+      "reqd": 1,
+      "description": "Passed to the target: the template's context, or the callable's argument."
+    },
+    {
+      "fieldname": "expected",
+      "fieldtype": "Code",
+      "label": "Expected",
+      "options": "JSON",
+      "description": "Optional. A JSON object: every key given must match the output (a subset match). Text: must equal the output."
+    },
+    {
+      "fieldname": "checks",
+      "fieldtype": "Code",
+      "label": "Checks",
+      "options": "JSON",
+      "description": "Optional list, e.g. [{\"type\": \"equals\", \"path\": \"intent\", \"value\": \"question\"}, {\"type\": \"max_words\", \"path\": \"reply\", \"value\": 80}, {\"type\": \"judge\", \"criteria\": \"Polite and in Spanish\"}]."
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-11-09 14:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Eval Case",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "istable": 1
+}

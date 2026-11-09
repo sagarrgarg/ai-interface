@@ -8,7 +8,7 @@ from frappe.utils import flt
 
 from ai_interface.providers import get_provider
 from ai_interface.providers.base import ProviderResponse
-from ai_interface.services import budget, router
+from ai_interface.services import budget, privacy, router
 
 
 def call_ai(
@@ -30,6 +30,8 @@ def call_ai(
 	module: str | None = None,
 	action: str | None = None,
 	needs: list[str] | None = None,
+	budget_scope: str | None = None,
+	budget_caps: dict | None = None,
 ) -> str:
 	"""Central AI call dispatcher.
 
@@ -43,6 +45,9 @@ def call_ai(
 	`needs` states capabilities rather than a model name — e.g. ["vision"],
 	["tools"] — so the call keeps working when the configured provider changes.
 	Passing `images` implies "vision" without saying so.
+
+	`budget_scope` charges the call to a scope of the caller's own (for example one AI agent);
+	`budget_caps` ({"daily", "monthly", "action"}) are the caller's caps for it (services/budget.py).
 	"""
 	settings = frappe.get_single("AI Settings")
 	user = user or frappe.session.user
@@ -53,7 +58,7 @@ def call_ai(
 		module = _module_for_doctype(reference_doctype)
 
 	# Refused before anything is queued, so a blocked call costs nothing.
-	budget.check(settings, calling_app, user)
+	budget.check(settings, calling_app, user, scope=budget_scope, caps=budget_caps)
 
 	requirements = list(needs or [])
 	if images and "vision" not in requirements:
@@ -88,6 +93,7 @@ def call_ai(
 		reference_name=reference_name,
 		module=module,
 		action=action,
+		budget_scope=budget_scope,
 		currency=provider_doc.currency or "USD",
 		base_currency=_base_currency(settings),
 	)
@@ -205,7 +211,7 @@ def _execute_ai_call(
 				"provider": step["provider"],
 				"model": response.model or step["model"],
 				"attempts": index + 1,
-				"output_text": response.content if retain_payloads else "",
+				"output_text": privacy.for_storage(response.content, log.calling_app) if retain_payloads else "",
 				"input_tokens": response.input_tokens,
 				"output_tokens": response.output_tokens,
 				"cost": cost,
@@ -304,11 +310,20 @@ def _create_call_log(settings, **kwargs):
 	"""
 	if not settings.enable_logging:
 		kwargs["input_text"] = ""
+	else:
+		kwargs["input_text"] = privacy.for_storage(kwargs.get("input_text"), kwargs.get("calling_app"), settings)
+
+	# Calls made while an evaluation run executes a case are tagged to that run (services/evals.py).
+	eval_logs = getattr(frappe.local, "ai_eval_logs", None)
+	if eval_logs is not None:
+		kwargs.setdefault("eval_run", getattr(frappe.local, "ai_eval_run", None))
 
 	log = frappe.new_doc("AI Call Log")
 	log.update(kwargs)
 	log.insert(ignore_permissions=True)
 	frappe.db.commit()
+	if eval_logs is not None:
+		eval_logs.append(log.name)
 	return log
 
 

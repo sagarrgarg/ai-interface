@@ -1,0 +1,161 @@
+{
+  "actions": [],
+  "creation": "2026-11-09 14:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "eval_set",
+    "status",
+    "score",
+    "threshold",
+    "notes",
+    "cb1",
+    "total",
+    "passed",
+    "failed",
+    "base_cost",
+    "started_on",
+    "ended_on",
+    "triggered_by",
+    "sb_results",
+    "results",
+    "error"
+  ],
+  "fields": [
+    {
+      "fieldname": "eval_set",
+      "fieldtype": "Link",
+      "label": "Eval Set",
+      "options": "AI Eval Set",
+      "reqd": 1,
+      "read_only": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Running\nPassed\nFailed\nError",
+      "default": "Running",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "score",
+      "fieldtype": "Percent",
+      "label": "Score",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "threshold",
+      "fieldtype": "Percent",
+      "label": "Threshold",
+      "read_only": 1
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "What Changed",
+      "description": "For example: new prompt version, model or effort."
+    },
+    {
+      "fieldname": "cb1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "total",
+      "fieldtype": "Int",
+      "label": "Cases",
+      "read_only": 1
+    },
+    {
+      "fieldname": "passed",
+      "fieldtype": "Int",
+      "label": "Passed",
+      "read_only": 1
+    },
+    {
+      "fieldname": "failed",
+      "fieldtype": "Int",
+      "label": "Failed",
+      "read_only": 1
+    },
+    {
+      "fieldname": "base_cost",
+      "fieldtype": "Float",
+      "label": "Cost (base currency)",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "started_on",
+      "fieldtype": "Datetime",
+      "label": "Started",
+      "read_only": 1
+    },
+    {
+      "fieldname": "ended_on",
+      "fieldtype": "Datetime",
+      "label": "Ended",
+      "read_only": 1
+    },
+    {
+      "fieldname": "triggered_by",
+      "fieldtype": "Link",
+      "label": "Triggered By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sb_results",
+      "fieldtype": "Section Break",
+      "label": "Results"
+    },
+    {
+      "fieldname": "results",
+      "fieldtype": "Table",
+      "label": "Results",
+      "options": "AI Eval Result",
+      "read_only": 1
+    },
+    {
+      "fieldname": "error",
+      "fieldtype": "Long Text",
+      "label": "Error",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-11-09 14:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Ai Interface",
+  "name": "AI Eval Run",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "AI Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "autoname": "hash"
+}

@@ -25,7 +25,9 @@ def _cli_supports_isolation() -> bool:
 	global _isolation_ok
 	if _isolation_ok is None:
 		try:
-			help_text = subprocess.run(["claude", "--help"], capture_output=True, text=True, timeout=30).stdout
+			help_text = subprocess.run(
+				["claude", "--help"], capture_output=True, text=True, timeout=30
+			).stdout
 			_isolation_ok = all(f in help_text for f in ISOLATION_FLAGS if f.startswith("--"))
 		except Exception:
 			_isolation_ok = False

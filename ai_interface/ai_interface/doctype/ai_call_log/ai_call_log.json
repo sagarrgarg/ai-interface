@@ -20,6 +20,10 @@
     "reference_name",
     "column_break_attribution",
     "action",
+    "budget_scope",
+    "batch",
+    "batch_key",
+    "eval_run",
     "error_type",
     "section_request",
     "input_text",
@@ -42,7 +46,8 @@
     "parent_call",
     "step",
     "section_audit",
-    "user"
+    "user",
+    "payload_purged"
   ],
   "fields": [
     {
@@ -149,6 +154,36 @@
       "in_standard_filter": 1,
       "label": "Action",
       "read_only": 1
+    },
+    {
+      "fieldname": "budget_scope",
+      "fieldtype": "Data",
+      "label": "Budget Scope",
+      "read_only": 1,
+      "search_index": 1,
+      "description": "The scope the calling app charged this call to (scope budgets in AI Settings)."
+    },
+    {
+      "fieldname": "batch",
+      "fieldtype": "Link",
+      "label": "Batch",
+      "options": "AI Batch",
+      "read_only": 1
+    },
+    {
+      "fieldname": "batch_key",
+      "fieldtype": "Data",
+      "label": "Batch Key",
+      "read_only": 1,
+      "description": "The caller's own key for this request in its batch."
+    },
+    {
+      "fieldname": "eval_run",
+      "fieldtype": "Link",
+      "label": "Eval Run",
+      "options": "AI Eval Run",
+      "read_only": 1,
+      "description": "Set when the call was made by an evaluation run."
     },
     {
       "fieldname": "error_type",
@@ -306,11 +341,18 @@
       "label": "User",
       "options": "User",
       "read_only": 1
+    },
+    {
+      "fieldname": "payload_purged",
+      "fieldtype": "Check",
+      "label": "Prompt Text Cleared",
+      "read_only": 1,
+      "description": "The prompt and answer text were emptied by the retention policy; tokens and cost are kept."
     }
   ],
   "index_web_pages_for_search": 0,
   "links": [],
-  "modified": "2026-11-09 12:00:00.000000",
+  "modified": "2026-11-09 14:00:00.000000",
   "modified_by": "Administrator",
   "module": "Ai Interface",
   "name": "AI Call Log",
