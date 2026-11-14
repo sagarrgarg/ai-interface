@@ -49,6 +49,38 @@ PROVIDER_TYPES = [
 		"default_currency": "INR",
 		"unsupported_params": "stream_options, max_completion_tokens, service_tier",
 	},
+	{
+		# Gemini's OpenAI-compatible endpoint: the same adapter, a Gemini API key as Bearer
+		"type_name": "Google Gemini",
+		"adapter_path": "ai_interface.providers.openai_compatible.OpenAICompatibleProvider",
+		"default_base_url": "https://generativelanguage.googleapis.com",
+		"chat_path": "/v1beta/openai/chat/completions",
+		"models_path": "/v1beta/openai/models",
+		"default_currency": "USD",
+		"pricing_source_url": LITELLM_CATALOG,
+		"catalog_prefix": "gemini/",
+	},
+	{
+		# Many vendors' models behind one key and one bill
+		"type_name": "OpenRouter",
+		"adapter_path": "ai_interface.providers.openai_compatible.OpenAICompatibleProvider",
+		"default_base_url": "https://openrouter.ai",
+		"chat_path": "/api/v1/chat/completions",
+		"models_path": "/api/v1/models",
+		"default_currency": "USD",
+		"pricing_source_url": LITELLM_CATALOG,
+		"catalog_prefix": "openrouter/",
+	},
+	{
+		# Models running on your own machine or server: no key, no per-token cost
+		"type_name": "Ollama",
+		"adapter_path": "ai_interface.providers.openai_compatible.OpenAICompatibleProvider",
+		"default_base_url": "http://localhost:11434",
+		"chat_path": "/v1/chat/completions",
+		"models_path": "/v1/models",
+		"no_credential": 1,
+		"default_currency": "USD",
+	},
 ]
 
 

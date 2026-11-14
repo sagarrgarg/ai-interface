@@ -7,6 +7,10 @@ app_license = "mit"
 
 required_apps = ["frappe", "erpnext"]
 
+# Patches never run on a fresh install: these seed what a new site needs (provider types, roles, defaults)
+after_install = "ai_interface.install.after_install"
+after_migrate = "ai_interface.install.after_migrate"
+
 export_python_type_annotations = True
 
 default_log_clearing_doctypes = {
