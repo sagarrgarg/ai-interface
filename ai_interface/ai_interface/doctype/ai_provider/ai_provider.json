@@ -83,12 +83,12 @@
       "description": "sk-ant-api03-* from console.anthropic.com"
     },
     {
-      "depends_on": "eval:!doc.type_no_credential",
+      "depends_on": "eval:!doc.type_no_credential || doc.provider_type=='Claude Code'",
       "fieldname": "auth_token",
       "fieldtype": "Password",
       "label": "Auth Token",
       "mandatory_depends_on": "eval:doc.auth_type=='Auth Token' && doc.provider_type!='Claude Code'",
-      "description": "sk-ant-oat01-* from claude setup-token"
+      "description": "sk-ant-oat01-* from claude setup-token. For Claude Code it is optional: needed where nobody can sign the CLI in by hand (Frappe Cloud)."
     },
     {
       "fieldname": "api_base_url",
@@ -180,7 +180,7 @@
   ],
   "index_web_pages_for_search": 0,
   "links": [],
-  "modified": "2026-05-01 00:00:03.000000",
+  "modified": "2026-11-15 10:00:00.000000",
   "modified_by": "Administrator",
   "module": "Ai Interface",
   "name": "AI Provider",

@@ -520,6 +520,57 @@ class TestAdapters(FrappeTestCase):
 		self.assertEqual(run.call_args.kwargs["env"]["CLAUDE_CODE_SAFE_MODE"], "1")
 		self.assertEqual(out.content, '{"a": 1}')
 
+	def test_claude_cli_is_found_on_the_path_or_in_the_bundled_package(self):
+		import os
+		import tempfile
+		from types import SimpleNamespace as NS
+
+		from ai_interface.providers import claude_code_provider as cc
+
+		with patch.dict(os.environ, {"AI_INTERFACE_CLAUDE_BIN": ""}), patch.object(cc.shutil, "which", return_value="/usr/local/bin/claude"):
+			self.assertEqual(cc.claude_bin(), "/usr/local/bin/claude")  # one a person installed wins
+		with tempfile.TemporaryDirectory() as pkg:
+			os.makedirs(os.path.join(pkg, "_bundled"))
+			bundled = os.path.join(pkg, "_bundled", "claude")
+			with open(bundled, "w") as f:
+				f.write("#!/bin/sh\n")
+			os.chmod(bundled, 0o644)  # an unpacker that dropped the executable bit
+			spec = NS(origin=os.path.join(pkg, "__init__.py"))
+			with (
+				patch.dict(os.environ, {"AI_INTERFACE_CLAUDE_BIN": ""}),
+				patch.object(cc.shutil, "which", return_value=None),
+				patch("importlib.util.find_spec", return_value=spec),
+			):
+				self.assertEqual(cc.claude_bin(), bundled)  # Frappe Cloud: the copy claude-agent-sdk ships
+				self.assertTrue(os.access(bundled, os.X_OK))
+		with (
+			patch.dict(os.environ, {"AI_INTERFACE_CLAUDE_BIN": ""}),
+			patch.object(cc.shutil, "which", return_value=None),
+			patch("importlib.util.find_spec", return_value=None),
+		):
+			self.assertIsNone(cc.claude_bin())
+			with self.assertRaises(ProviderHTTPError):
+				cc._claude()
+
+	def test_claude_cli_signs_in_with_the_saved_subscription_token(self):
+		from ai_interface.providers import claude_code_provider as cc
+
+		done = SimpleNamespace(returncode=0, stdout=json.dumps({"result": "ok", "usage": {}}), stderr="")
+		with (
+			patch.object(cc, "claude_bin", return_value="/x/claude"),
+			patch.object(cc, "_cli_supports_isolation", return_value=True),
+			patch.object(cc.subprocess, "run", return_value=done) as run,
+		):
+			cc.ClaudeCodeProvider().chat([{"role": "user", "content": "q"}], "sonnet", 10, credential="sk-ant-oat01-x")
+			self.assertEqual(run.call_args.args[0][0], "/x/claude")
+			self.assertEqual(run.call_args.kwargs["env"]["CLAUDE_CODE_OAUTH_TOKEN"], "sk-ant-oat01-x")
+			import os
+
+			with patch.dict(os.environ, {}, clear=False):
+				os.environ.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+				cc.ClaudeCodeProvider().chat([{"role": "user", "content": "q"}], "sonnet", 10)
+				self.assertNotIn("CLAUDE_CODE_OAUTH_TOKEN", run.call_args.kwargs["env"])  # no token: the CLI's own login
+
 	def test_claude_cli_refuses_to_run_unisolated(self):
 		from ai_interface.providers import claude_code_provider as cc
 

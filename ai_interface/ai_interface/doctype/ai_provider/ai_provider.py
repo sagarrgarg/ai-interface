@@ -36,7 +36,10 @@ class AIProvider(Document):
 		if self.provider_type:
 			config = frappe.get_cached_doc("AI Provider Type", self.provider_type).as_config()
 			if config.get("no_credential"):
-				return "", "None"
+				# A type that signs itself in may still be given a token: the Claude CLI takes a
+				# subscription token from `claude setup-token` where nobody can log in by hand.
+				token = self.get_password("auth_token", raise_exception=False)
+				return (token, "Auth Token") if token else ("", "None")
 		fieldname = "auth_token" if self.auth_type == "Auth Token" else "api_key"
 		label = "Auth Token" if self.auth_type == "Auth Token" else "API Key"
 

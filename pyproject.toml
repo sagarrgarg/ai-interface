@@ -12,6 +12,9 @@ dependencies = [
     "anthropic>=0.40.0",
     "pdf2image>=1.16.0",
     "Pillow>=10.0.0",
+    # Bundles the Claude CLI (claude_agent_sdk/_bundled/claude), so the "Claude Code" provider type works on
+    # hosts where nobody can install the CLI by hand, Frappe Cloud included
+    "claude-agent-sdk>=0.2.180,<0.3",
 ]
 
 [build-system]
